@@ -1,0 +1,1420 @@
+<!doctype html>
+<html lang="th">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eyeframe Ruler · วัดระยะจากภาพ</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f1fa;color:#282037;font:1rem/1.55 system-ui,Tahoma,sans-serif}main{max-width:780px;margin:auto;padding:24px 16px 50px}header{display:flex;gap:14px;align-items:center}header b{background:#5b39a2;color:white;font:700 1.3rem monospace;padding:10px;border-radius:12px}h1,h2,p{margin:0}h1{font-size:1.55rem}h2{font-size:1.1rem}header p,small{color:#665e71}section{background:white;border:1px solid #ded7e8;border-radius:18px;padding:16px;margin-top:16px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}button,.upload,select,input{font:inherit;color:inherit;padding:9px 13px;border:1px solid #cfc5dc;border-radius:10px;background:white;min-height:44px}button,.upload{cursor:pointer}.primary{background:#58359b;color:white;border-color:#58359b}button:disabled,input:disabled,select:disabled{opacity:.55;cursor:default}.stage{background:#1e1929;color:#eee5ff;min-height:150px;display:grid;place-items:center;border-radius:10px;overflow:hidden;margin:12px 0}.stage>*{grid-area:1/1}.stage p{text-align:center;padding:20px}video,canvas{display:block;width:100%;height:auto}canvas{cursor:crosshair;touch-action:manipulation}input[type=number]{width:100px}ol{padding-left:30px;font-variant-numeric:tabular-nums}li{padding:4px}#status{font-weight:600;color:#513389}[hidden]{display:none!important}.file{position:absolute;width:1px;height:1px;opacity:0;min-height:0;padding:0}.upload:focus-within{outline:2px solid #58359b}
+canvas{touch-action:none}.readings{list-style:none;padding:0;margin:6px 0 12px;font-variant-numeric:tabular-nums}.readings:empty{display:none}.readings button[aria-pressed=true]{border-color:#58359b;background:#efe8fc;color:#432777}
+</style>
+<style>
+#viewport{overflow:auto;max-height:75svh;background:#1e1929;border-radius:10px}
+#viewport .stage{margin:0;min-height:0;border-radius:0}
+#viewport.pan canvas{touch-action:pan-x pan-y;cursor:grab}
+@media (any-pointer:fine){
+ #view.aim{cursor:none}
+}
+.readout{min-width:3.4em;text-align:center;font-variant-numeric:tabular-nums}
+#quickTools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px}#quickTools button{padding:6px;min-height:46px;font-weight:600;touch-action:manipulation}@media(min-width:640px){#quickTools{grid-template-columns:repeat(6,minmax(0,1fr))}}
+#controls{position:absolute;bottom:4px;left:4px;right:4px;z-index:3;background:#fff;padding:5px;border-radius:8px}#camera{max-width:45%}.image-frame{position:relative;isolation:isolate}
+#imageTools{position:absolute;top:4px;right:4px;max-width:calc(100% - 8px);max-height:calc(100% - 8px);display:flex;flex-direction:column;align-items:flex-end;pointer-events:none;z-index:2}
+#imageTools>summary{display:list-item;list-style-position:inside;align-self:flex-end;width:max-content;padding:9px 12px;border:1px solid white;border-radius:10px;background:#432777;color:white;cursor:pointer;pointer-events:auto;min-height:44px}
+#imageTools::details-content{min-height:0;overflow:auto;overscroll-behavior:contain;pointer-events:auto}
+.tool-card{width:min(320px,100%);background:#fff;border:1px solid #cfc5dc;border-radius:10px;padding:6px 10px;pointer-events:auto;overflow:auto;overscroll-behavior:contain}
+.tool-card .row{gap:4px;margin:4px 0}.tool-card button,.tool-card select{padding:5px 8px;font-size:.9rem}
+@supports not selector(::details-content){#imageTools[open]{overflow:auto;pointer-events:auto}}
+#printSheet{display:none}
+@media print{
+ @page{size:A4;margin:0}
+ body{background:white;margin:0}
+ body>*:not(#printSheet){display:none!important}
+ #printSheet{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3mm;width:100%;height:100%;position:fixed;inset:0}
+ #printPhoto{max-width:none;max-height:none;flex:none}
+ .checkScale{width:50mm;text-align:center;border:solid black;border-width:0 .2mm .2mm;line-height:4mm;font:9pt monospace;color:black}
+}
+</style>
+<svg id="aimCursor" aria-hidden="true" viewBox="-52 -52 104 104" style="display:none;pointer-events:none;position:fixed;transform:translate(-50%,-50%);z-index:10;overflow:visible"><circle r="50" fill="none" stroke="#191329" stroke-width="2.5" vector-effect="non-scaling-stroke"/><circle r="50" fill="none" stroke="#94f6d2" stroke-width="1.2" vector-effect="non-scaling-stroke"/><circle id="aimDot" r="1" fill="#ffdf00" stroke="#191329" stroke-width=".55" vector-effect="non-scaling-stroke"/></svg>
+<main>
+<header><b aria-hidden="true">mm</b><div><h1>Eyeframe Ruler</h1><p>วัดขนาดและระยะห่างจากภาพถ่าย</p></div></header>
+<section><h2>ข้อมูลประกอบภาพ</h2><div class="row"><label>ชื่อ <input id="person" maxlength="120" autocomplete="off"></label><label>เบอร์โทร <input id="phone" maxlength="40" type="tel" autocomplete="off"></label></div><output id="photoTime">เวลาบันทึก · รอเลือกภาพ</output></section>
+<section><h2>ภาพสำหรับวัด</h2><p>ถ่ายหน้าตรงให้เห็นเป้าขาวดำทั้ง 4 จุดบนอุปกรณ์และวัตถุที่ต้องการวัด</p>
+<div class="row"><button id="open" class="primary">เปิดกล้อง</button><input hidden id="nativeShot" type="file" accept="image/*" capture="environment"><button id="webCam">กล้องในเว็บ</button><label class="upload">เลือกรูปจากเครื่อง<input id="file" class="file" type="file" accept="image/*,image/heic,image/heif,.heic,.heif,.hif"></label></div>
+
+<div class="image-frame"><div id="viewport">
+<div class="stage" style="position:relative"><p id="empty">ภาพจากกล้องหรือภาพที่เลือกจะแสดงที่นี่</p><video id="video" playsinline muted hidden></video><canvas tabindex="0" id="view" hidden aria-label="ภาพสำหรับตั้งสเกลและลากกรอบวัด"></canvas><span id="moveGrip" aria-hidden="true" hidden style="position:absolute;pointer-events:none;transform:translate(-50%,-50%);border:1px solid white;background:#55358e;color:white;border-radius:50%;width:26px;height:26px;text-align:center;line-height:24px">✥</span></div>
+</div>
+<div class="row" id="controls" hidden><label for="camera">เลนส์</label><select id="camera"></select><button id="snap" class="primary">ถ่ายภาพเพื่อวัด</button><button id="cancel">ปิดกล้อง</button></div><details id="imageTools" hidden><summary>เครื่องมือเพิ่มเติม</summary><div class="tool-card">
+<div class="row"><output id="zoom" class="readout">100%</output><button id="pan" disabled aria-pressed="false">เลื่อนดูภาพ</button></div>
+<div class="row" role="group" aria-label="วิธีวัด"><label for="pick">เลือกกรอบ</label><select id="pick" disabled><option>ยังไม่มีกรอบ</option></select></div>
+<div id="aimPanel">
+<label class="row"><input id="grid" type="checkbox" checked disabled>แสดงตาราง 1 มม. · เส้นเข้มทุก 10 มม.</label><p><small>เมื่อเลือกครบ 4 จุด ภาพจะหมุนตรงตามแถบและครอปอัตโนมัติ เหนือแถบ 30 มม. ใต้แถบ 80 มม. ด้านข้างข้างละ 30 มม.</small></p>
+<small>วงเล็ง Ø 8 มม. อ้างอิงระยะระหว่างจุดที่กำหนด เริ่มแสดงตามสเกลเมื่อเลือกจุดที่สอง</small>
+<div id="fine" role="group" aria-label="ปรับจุดอ้างอิง"><div class="row"><span>ปรับตำแหน่ง</span><button data-ref="0" disabled>จุด 1</button><button data-ref="1" disabled>จุด 2</button><button data-ref="2" disabled>จุด 3</button><button data-ref="3" disabled>จุด 4</button></div>
+<div class="row"><button data-key="ArrowLeft" disabled>← ซ้าย</button><button data-key="ArrowUp" disabled>↑ บน</button><button data-key="ArrowDown" disabled>↓ ล่าง</button><button data-key="ArrowRight" disabled>→ ขวา</button></div>
+<small>เมื่อตั้งครบ 4 จุด แตะวงบนภาพแล้วลากเพื่อย้าย หรือเลือกจุดแล้วกดลูกศรบนเว็บหรือคีย์บอร์ดเพื่อขยับครั้งละ 0.01 มม.</small></div></div>
+<div id="boxFine" hidden><div class="row"><label for="boxPart">ปรับกรอบครั้งละ 0.01 มม.</label><select id="boxPart"><option value="all">เลื่อนทั้งกรอบ</option><option value="0">มุมซ้ายบน</option><option value="1">มุมขวาบน</option><option value="2">มุมขวาล่าง</option><option value="3">มุมซ้ายล่าง</option></select></div><div class="row"><button data-box-key="ArrowLeft">← ซ้าย</button><button data-box-key="ArrowUp">↑ บน</button><button data-box-key="ArrowDown">↓ ล่าง</button><button data-box-key="ArrowRight">→ ขวา</button></div></div>
+<div class="row"><button id="nested" hidden></button></div>
+
+<div class="row"><button id="printA4" disabled>พิมพ์ A4 ขนาดจริง</button></div><div class="row"></div>
+</div></details></div><canvas id="fitFooter" hidden aria-label="ค่า PD และ FH" style="width:100%;height:auto;cursor:default"></canvas><div id="quickTools" role="group" aria-label="เครื่องมือวัดด่วน" hidden><button id="boxTool" class="primary" aria-pressed="true" disabled>วัดแบบกรอบ</button><button id="tiltTool" aria-pressed="false" disabled>กรอบเอียง 45°</button><button id="lineTool" aria-pressed="false" disabled>วัดจุดต่อจุด</button><button id="out" disabled>ซูมออก −</button><button id="in" disabled>ซูมเข้า +</button><button id="save" disabled>บันทึกภาพ PNG พร้อม EXIF เดิม</button><button id="undo" disabled>↶ ย้อนกลับ</button><button id="redo" disabled>↷ ทำซ้ำ</button></div><div id="edgeTools" hidden><label><input id="showRim" type="checkbox"> ดูแนวขอบเลนส์ที่ตรวจพบ</label> <select id="edgeChoice" aria-label="ขอบที่จะแก้"><option value="">แตะเพื่อเลือกขอบที่จะแก้…</option><option value="0-top">ขวา · ขอบบน</option><option value="0-temple">ขวา · ขอบด้านขมับ</option><option value="0-nose">ขวา · ขอบด้านจมูก</option><option value="0-bottom">ขวา · ขอบล่าง</option><option value="1-top">ซ้าย · ขอบบน</option><option value="1-temple">ซ้าย · ขอบด้านขมับ</option><option value="1-nose">ซ้าย · ขอบด้านจมูก</option><option value="1-bottom">ซ้าย · ขอบล่าง</option></select></div><p><strong id="gapResult" style="color:#dd0078" hidden></strong></p><p id="status" role="status">เปิดกล้องหรือเลือกภาพเพื่อเริ่มวัด</p></section>
+<section><h2>ตั้งสเกลอ้างอิง</h2><div class="row"><label for="mode">อุปกรณ์</label><select id="mode"><option value="bar">แถบวัดกรอบแว่น 4 จุด</option><option value="manual">ไม้บรรทัด 2 จุด</option></select><button id="autoBar" disabled>หาจุด 1–4 อัตโนมัติ</button><button id="reset" disabled>ตั้งสเกลใหม่</button></div><label id="barSpacing">ระยะห่าง 4 จุด (35.67) <input id="spacing" type="number" min="0.01" step="any" inputmode="decimal" value="35.67"></label><div id="manual" class="row" hidden><label for="length">ระยะจริง (mm)</label><input id="length" type="number" min="0.01" step="any" value="50" inputmode="decimal"></div><small id="hint">แตะจุดตัดลายขาวดำจากซ้ายไปขวา ข้ามสกรูกลาง ระยะต่อช่วงใช้ค่าที่กำหนดด้านบน</small></section>
+<section><h2>ระยะจุดตาดำ</h2><ul id="results" class="readings"></ul><h2 id="frameHeading" hidden>ขนาดกรอบ</h2><ul id="frameResults" class="readings"></ul><p><small>ผลเป็นค่าประมาณ ความเอียงของกล้องและวัตถุที่อยู่คนละระดับทำให้ค่าคลาดเคลื่อน</small></p></section>
+</main><div id="printSheet" aria-hidden="true"><img id="printPhoto" alt=""><div class="checkScale">50 mm</div></div><style id="pageSize"></style>
+<script>
+'use strict';
+// Extract the TIFF byte stream without reserializing its IFDs, GPS or MakerNotes.
+function heifExif(bytes){
+ const d=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+ function integer(at,size){
+  let n=0;
+  for(let i=0;i<size;i++)n=n*256+d.getUint8(at+i);
+  if(!Number.isSafeInteger(n))throw Error('HEIF offset');
+  return n;
+ }
+ function boxes(start,end){
+  const result=[];
+  for(let p=start;p+8<=end;){
+   let size=integer(p,4),header=8;
+   const type=String.fromCharCode(...bytes.subarray(p+4,p+8));
+   if(size===1){size=integer(p+8,8);header=16}
+   if(!size)size=end-p;
+   if(size<header||size>end-p)break;
+   result.push({type,start:p+header,end:p+size});p+=size;
+  }
+  return result;
+ }
+ const meta=boxes(0,bytes.length).find(b=>b.type==='meta');
+ if(!meta)return null;
+ const children=boxes(meta.start+4,meta.end),box=t=>children.find(b=>b.type===t);
+ const info=box('iinf'),loc=box('iloc');
+ if(!info||!loc)return null;
+ const ids=[];
+ for(const item of boxes(info.start+(bytes[info.start]?8:6),info.end)){
+  if(item.type!=='infe')continue;
+  const size=bytes[item.start]===3?4:2,typeAt=item.start+4+size+2;
+  if(bytes[item.start]>=2&&integer(typeAt,4)===0x45786966)ids.push(integer(item.start+4,size));
+ }
+ if(!ids.length)return null;
+ const refs=box('iref'),primary=box('pitm');
+ let target=ids[0];
+ if(refs&&primary){
+  const width=bytes[refs.start]?4:2,id=integer(primary.start+4,bytes[primary.start]?4:2);
+  for(const ref of boxes(refs.start+4,refs.end)){
+   if(ref.type!=='cdsc')continue;
+   const from=integer(ref.start,width);
+   if(!ids.includes(from))continue;
+   for(let p=ref.start+width+2;p+width<=ref.end;p+=width)if(integer(p,width)===id)target=from;
+  }
+ }
+ let p=loc.start;
+ function take(n){if(p+n>loc.end)throw Error('HEIF location');const v=integer(p,n);p+=n;return v}
+ const version=take(1);take(3);
+ const widths=take(1),offsetSize=widths>>4,lengthSize=widths&15,other=take(1);
+ const count=take(version<2?2:4);
+ for(let i=0;i<count;i++){
+  const id=take(version<2?2:4),method=version?take(2)&15:0,external=take(2),base=take(other>>4),num=take(2),parts=[];
+  let total=0;
+  for(let j=0;j<num;j++){
+   if(version)take(other&15);
+   const offset=take(offsetSize),len=take(lengthSize);
+   if(id!==target)continue;
+   const data=method===1?box('idat'):null;
+   if(external||method>1||(method===1&&!data))throw Error('HEIF metadata location');
+   const start=(data?.start||0)+base+offset,end=start+len;
+   if(end>(data?.end||bytes.length)||total+len>bytes.length)throw Error('HEIF metadata extent');
+   parts.push(bytes.subarray(start,end));total+=len;
+  }
+  if(id===target){
+   const item=new Uint8Array(total);let dest=0;
+   for(const part of parts){item.set(part,dest);dest+=part.length}
+   const offset=new DataView(item.buffer).getUint32(0);
+   return item.slice(4+offset);
+  }
+ }
+ return null;
+}
+function pngChunk(type,data){
+ const bytes=new Uint8Array(12+data.length),d=new DataView(bytes.buffer);
+ d.setUint32(0,data.length);bytes.set(new TextEncoder().encode(type),4);bytes.set(data,8);
+ let crc=0xffffffff;
+ for(const byte of bytes.subarray(4,-4)){crc^=byte;for(let i=0;i<8;i++)crc=(crc>>>1)^((crc&1)?0xedb88320:0)}
+ d.setUint32(bytes.length-4,~crc);return bytes;
+}
+async function taggedPng(blob,exif,scale){
+ const bytes=new Uint8Array(await blob.arrayBuffer()),d=new DataView(bytes.buffer),out=[bytes.subarray(0,8)];
+ for(let p=8;p<bytes.length;){
+  const end=p+12+d.getUint32(p),type=String.fromCharCode(...bytes.subarray(p+4,p+8));
+  if(type!=='eXIf'&&(type!=='pHYs'||!scale))out.push(bytes.subarray(p,end));
+  if(type==='IHDR'){
+   if(exif)out.push(pngChunk('eXIf',exif));
+   if(scale){
+    const phys=new Uint8Array(9),v=new DataView(phys.buffer),ppm=Math.round(scale*1000);
+    v.setUint32(0,ppm);v.setUint32(4,ppm);phys[8]=1;out.push(pngChunk('pHYs',phys));
+   }
+  }
+  p=end;
+ }
+ return new Blob(out,{type:'image/png'});
+}
+const heicLibraries=new Map();
+function loadHeicLibrary(url){
+ if(!heicLibraries.has(url)){
+  const pending=new Promise((resolve,reject)=>{
+   const script=document.createElement('script');
+   script.src=url;script.onload=resolve;script.onerror=()=>{script.remove();reject(Error('โหลดตัวอ่านภาพไม่ได้'))};
+   document.head.append(script);
+  }).catch(error=>{heicLibraries.delete(url);throw error});
+  heicLibraries.set(url,pending);
+ }
+ return heicLibraries.get(url);
+}
+async function decodeHeic(file){
+ const sources=[
+  ['https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/iife/heic-to.js',()=>typeof window.HeicTo==='function'?window.HeicTo:window.HeicTo?.heicTo],
+  ['https://unpkg.com/heic2any@0.0.4/dist/heic2any.min.js',()=>window.heic2any]
+ ];
+ let loaded=false;
+ for(const [url,library] of sources){
+  try{
+   if(!library())await loadHeicLibrary(url);
+   const decode=library();if(typeof decode!=='function')continue;
+   loaded=true;
+   const result=await decode({blob:file,type:'image/png',toType:'image/png'});
+   const image=Array.isArray(result)?result[0]:result;
+   if(image instanceof Blob&&image.size)return image;
+  }catch{/* Try the other decoder. */}
+ }
+ throw Error(loaded?'ถอดรหัสภาพ HEIC นี้ไม่ได้':'กรุณาเชื่อมต่ออินเทอร์เน็ตเพื่อโหลดตัวอ่าน HEIC');
+}
+
+const el=id=>document.getElementById(id);
+const view=el('view'), ctx=view.getContext('2d'), photo=document.createElement('canvas');
+const video=el('video'), camera=el('camera'), lengthInput=el('length');
+let stream=null, revision=0, hasPhoto=false, reference=[], readings=[], first=null, referenceMM=0;
+const distance=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y);
+const barMode=()=>el('mode').value==='bar';
+const targetCount=()=>barMode()?4:2;
+const refButtons=[...document.querySelectorAll('[data-ref]')],arrowButtons=[...document.querySelectorAll('[data-key]')];
+let fineIndex=-1;
+const arrowSteps={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
+function nudge(key){
+ if(fineIndex<0||!barMode()||reference.length!==4||view.hidden)return;
+ const [dx,dy]=arrowSteps[key],step=.01*pixelsPerMm(),delta=spin({x:dx*step,y:dy*step},-angle);
+ const old=reference[fineIndex],next={x:old.x+delta.x,y:old.y+delta.y};
+ if(Math.abs(next.x)>photo.width/2||Math.abs(next.y)>photo.height/2){say('จุดอยู่ที่ขอบภาพแล้ว');return}
+ remember();reference[fineIndex]=next;geometry();render();say('ปรับจุด '+(fineIndex+1)+' แล้ว · ครั้งละ 0.01 มม.');
+}
+refButtons.forEach(b=>b.onclick=()=>{keyPart=null;fineIndex=Number(b.dataset.ref);render();b.focus();say('ปรับจุด '+(fineIndex+1)+' ด้วยปุ่มลูกศร')});
+arrowButtons.forEach(b=>b.onclick=()=>nudge(b.dataset.key));
+el('fine').onkeydown=e=>{
+ if(!Object.hasOwn(arrowSteps,e.key)||fineIndex<0||e.altKey||e.ctrlKey||e.metaKey)return;
+ e.preventDefault();if(!e.repeat)nudge(e.key);
+};
+let referenceSpacingMm=35.67;
+el('spacing').onchange=()=>{
+ const field=el('spacing'),value=field.valueAsNumber;
+ if(!field.validity.valid||!Number.isFinite(value)||value<=0){field.value=referenceSpacingMm;say('ใส่ระยะระหว่างจุดมากกว่า 0 mm');return}
+ if(value===referenceSpacingMm)return;
+ if(hasPhoto)remember();referenceSpacingMm=value;if(hasPhoto){geometry();render();promptPoint()}
+};
+function barAxis(){
+ // Fit image coordinates to positions four equally spaced marks spanning 107 mm along the bar.
+ let dx=0,dy=0,sumSquares=0;
+ reference.forEach((p,i)=>{const offset=(i-(reference.length-1)/2)*referenceSpacingMm;dx+=offset*p.x;dy+=offset*p.y;sumSquares+=offset*offset});
+ return {x:dx/sumSquares,y:dy/sumSquares};
+}
+function pixelsPerMm(){
+ if(!barMode())return distance(...reference)/referenceMM;
+ const axis=barAxis();return Math.hypot(axis.x,axis.y);
+}
+function drawGrid(hairline){
+ const axis=barAxis(),spacing=Math.hypot(axis.x,axis.y);
+ if(!(spacing>0))return;
+ const direction=Math.atan2(axis.y,axis.x),origin=reference[0];
+ const corners=[];
+ for(const x of [-photo.width/2,photo.width/2])for(const y of [-photo.height/2,photo.height/2]){
+  corners.push(spin({x:x-origin.x,y:y-origin.y},-direction*180/Math.PI));
+ }
+ const xmin=Math.min(...corners.map(p=>p.x)),xmax=Math.max(...corners.map(p=>p.x));
+ const ymin=Math.min(...corners.map(p=>p.y)),ymax=Math.max(...corners.map(p=>p.y));
+ ctx.save();ctx.translate(originX,originY);ctx.rotate(angle*Math.PI/180);
+ ctx.beginPath();ctx.rect(-photo.width/2,-photo.height/2,photo.width,photo.height);ctx.clip();
+ ctx.translate(origin.x,origin.y);ctx.rotate(direction);
+ function lines(major){
+  const interval=major?10:1;
+  if(spacing*interval<hairline)return;
+  ctx.beginPath();
+  for(let i=Math.ceil(xmin/spacing/interval);i<=Math.floor(xmax/spacing/interval);i++){
+   if(!major&&i%10===0)continue;
+   const x=i*interval*spacing;ctx.moveTo(x,ymin);ctx.lineTo(x,ymax);
+  }
+  for(let i=Math.ceil(ymin/spacing/interval);i<=Math.floor(ymax/spacing/interval);i++){
+   if(!major&&i%10===0)continue;
+   const y=i*interval*spacing;ctx.moveTo(xmin,y);ctx.lineTo(xmax,y);
+  }
+  ctx.lineWidth=hairline*(major?.95:.65);ctx.strokeStyle=major?'rgba(16,32,42,.58)':'rgba(35,54,62,.28)';ctx.stroke();
+ }
+ lines(false);lines(true);ctx.restore();
+}
+el('grid').onchange=()=>render();
+const measured=(a,b)=>distance(a,b)/pixelsPerMm();
+let selected=null,drag=null,keyPart=null;
+let angle=0,zoom=1,panning=false;
+const viewport=el('viewport'),stage=view.parentElement;
+function spin(p,degrees){
+ const r=degrees*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
+ return {x:c*p.x-s*p.y,y:s*p.x+c*p.y};
+}
+// Each rectangle keeps the axes on which it was drawn. Its origin is the photo centre.
+let originX=0,originY=0,manualAngle=0;
+function display(p,basis=0){
+ const q=spin(p,angle-basis);return {x:q.x+originX,y:q.y+originY};
+}
+function local(p,basis){return spin({x:p.x-originX,y:p.y-originY},basis-angle)}
+function geometry(){
+ if(barMode()&&reference.length===4){
+  const axis=barAxis(),scale=Math.hypot(axis.x,axis.y);
+  const level=-Math.atan2(axis.y,axis.x)*180/Math.PI;
+  const start=spin(reference[0],level),end=spin(reference[3],level);
+  const left=Math.min(start.x,end.x)-30*scale,right=Math.max(start.x,end.x)+30*scale;
+  const centre=spin({x:(left+right)/2,y:start.y+25*scale},manualAngle);
+  angle=level+manualAngle;
+  view.width=Math.max(1,Math.round(right-left));view.height=Math.max(1,Math.round(110*scale));
+  originX=view.width/2-centre.x;originY=view.height/2-centre.y;
+  return;
+ }
+ angle=manualAngle;
+ const r=angle*Math.PI/180,c=Math.abs(Math.cos(r)),s=Math.abs(Math.sin(r));
+ view.width=Math.ceil(photo.width*c+photo.height*s-1e-8);
+ view.height=Math.ceil(photo.width*s+photo.height*c-1e-8);
+ originX=view.width/2;originY=view.height/2;
+}
+let measurementMode='box';
+let creatingChild=false;
+const measurementLimit=4;
+const tiltedBoxes=()=>readings.filter(pair=>pair.tilted);
+const isFreeLine=pair=>!pair.box&&!pair.tilted;
+const hasRoom=()=>measurementMode==='tilt'?tiltedBoxes().length<2:!readings.some(isFreeLine);
+function makeTilted(start,end){
+ const basis=angle-45;
+ return Object.assign([spin(start,basis),spin(end,basis)],{basis,tilted:true});
+}
+function fitLensRegions(outer,inner,tilted){
+ // Work in the levelled reference plane, before drawing grids, text or handles.
+ const scale=pixelsPerMm(),res=Math.min(3,scale),factor=res/scale;
+ const canvas=document.createElement('canvas');
+ canvas.width=Math.max(1,Math.round(view.width*factor));canvas.height=Math.max(1,Math.round(view.height*factor));
+ if(res<1||canvas.width>1600||canvas.height>800)return 'โปรดตรวจตำแหน่งกรอบและจุดตา';
+ const g=canvas.getContext('2d',{willReadFrequently:true}),w=canvas.width,h=canvas.height;
+ g.scale(factor,factor);g.translate(originX,originY);g.rotate(angle*Math.PI/180);g.drawImage(photo,-photo.width/2,-photo.height/2);
+ const data=g.getImageData(0,0,w,h).data,gray=new Float32Array(w*h),gx=new Float32Array(w*h),gy=new Float32Array(w*h);
+ for(let i=0;i<gray.length;i++)gray[i]=.299*data[4*i]+.587*data[4*i+1]+.114*data[4*i+2];
+ for(let y=2;y<h-2;y++)for(let x=2;x<w-2;x++){
+  const i=y*w+x;gx[i]=(gray[i+2]-gray[i-2]+gray[i+w+1]-gray[i+w-1]+gray[i-w+1]-gray[i-w-1])/3;
+  gy[i]=(gray[i+2*w]-gray[i-2*w]+gray[i+w+1]-gray[i-w+1]+gray[i+w-1]-gray[i-w-1])/3;
+ }
+ const report=[];
+ for(let side=0;side<2;side++){
+  // Reference example: each opening is about 1.53 marker pitches wide and 1.38 high.
+  // Use these ratios only to break ties; strong contours can override the sample shape.
+  const pitch=referenceSpacingMm*res;
+  const cx0=w/2+(side?1:-1)*1.01*pitch,cy0=(30+38)*res;
+  let best=null;
+  for(const power of [1,.7,.5]){
+   // Rounded to box-like lens profiles. Score all eight sectors so one strong brow or clip cannot dominate.
+   const pts=Array.from({length:64},(_,k)=>{
+    const t=(k+.5)*Math.PI/32,c=Math.cos(t),s=Math.sin(t);
+    return {x:Math.sign(c)*Math.abs(c)**power,y:Math.sign(s)*Math.abs(s)**power};
+   });
+   function evaluate(cx,cy,rx,ry){
+    if(rx<19*res||rx>35*res||ry<15*res||ry>34*res||cy-ry<35*res||Math.abs(cx-cx0)>10*res||Math.abs(cy-cy0)>12*res)return -Infinity;
+    const sectors=Array(8).fill(0);
+    for(let k=0;k<64;k++){
+     const p=pts[k],x=Math.round(cx+rx*p.x),y=Math.round(cy+ry*p.y);
+     if(x<2||x>=w-2||y<2||y>=h-2||data[4*(y*w+x)+3]<240)return -Infinity;
+     const prev=pts[(k+63)%64],next=pts[(k+1)%64],nx=(next.y-prev.y)*ry,ny=(prev.x-next.x)*rx,i=y*w+x;
+     const gradient=(gx[i]*nx+gy[i]*ny)/Math.hypot(nx,ny);
+     sectors[k>>3]+=Math.min(75,Math.abs(gradient))*(gradient<0?1:.78)/8;
+    }
+    sectors.sort((a,b)=>a-b);
+    const shapePenalty=(Math.abs(rx-.765*pitch)+Math.abs(ry-.69*pitch))*.33/res;
+    return sectors.slice(1,7).reduce((a,b)=>a+b,0)/6-shapePenalty;
+   }
+   let peak={score:-Infinity};
+   for(let dx=-6;dx<=6;dx+=3)for(let dy=-8;dy<=8;dy+=4)
+    for(let ax=22;ax<=32;ax+=2.5)for(let ay=18;ay<=30;ay+=3){
+     const v=[cx0+dx*res,cy0+dy*res,ax*res,ay*res],score=evaluate(...v);
+     if(score>peak.score)peak={v,score};
+    }
+   if(!peak.v)continue;
+   for(const step of [1,.5])for(let pass=0;pass<3;pass++)for(let i=0;i<4;i++)for(const sign of [-1,1]){
+    const v=peak.v.slice();v[i]+=sign*res*step;const score=evaluate(...v);if(score>peak.score)peak={v,score};
+   }
+   if(!best||peak.score>best.score)best={...peak,pts};
+  }
+  const sideName=side?'ซ้าย':'ขวา';
+  if(!best||best.score<13){report.push('ตรวจกรอบและจุดตา'+sideName);continue}
+  const [cx,cy,rx,ry]=best.v,screen=(x,y)=>({x:x/factor,y:y/factor});
+  const pbox=outer[side];
+  pbox[0]=local(screen(cx-rx,cy-ry),angle);pbox[1]=local(screen(cx+rx,cy+ry),angle);
+  // Refine each sector along its outward normal within a narrow band around the fitted rim.
+  const offsets=best.pts.map((p,i,pts)=>{
+   const prev=pts[(i+63)%64],next=pts[(i+1)%64];
+   const nx=(next.y-prev.y)*ry,ny=(prev.x-next.x)*rx,n=Math.hypot(nx,ny);
+   const x=cx+rx*p.x,y=cy+ry*p.y;let score=-Infinity,shift=0;
+   for(let d=-Math.round(2*res);d<=2*res;d++){
+    const ix=Math.round(x+d*nx/n),iy=Math.round(y+d*ny/n);
+    if(ix<2||ix>=w-2||iy<2||iy>=h-2)continue;
+    const k=iy*w+ix,gradient=(gx[k]*nx+gy[k]*ny)/n;
+    const v=Math.abs(gradient)*(gradient<0?1:.70)-2*Math.abs(d)/res;
+    if(v>score){score=v;shift=d}
+   }
+   return {x,y,nx:nx/n,ny:ny/n,shift};
+  });
+  const rim=offsets.map((p,i)=>{
+   const delta=[-2,-1,0,1,2].map(d=>offsets[(i+d+64)%64].shift).sort((a,b)=>a-b)[2];
+   return screen(p.x+p.nx*delta,p.y+p.ny*delta);
+  });
+  pbox.rim=rim.map(q=>local(q,0));
+  const bounds=rim.map(q=>local(q,angle));
+  pbox[0]={x:Math.min(...bounds.map(q=>q.x)),y:Math.min(...bounds.map(q=>q.y))};
+  pbox[1]={x:Math.max(...bounds.map(q=>q.x)),y:Math.max(...bounds.map(q=>q.y))};
+  alignTilted(pbox,tilted[side]);
+  // Look for a compact dark iris surrounded by lighter pixels on BOTH sides.
+  let eye=null;
+  for(let y=Math.ceil(cy-ry*.53);y<=cy+ry*.23;y++)for(let x=Math.ceil(cx-rx*.52);x<=cx+rx*.52;x++){
+   for(const radius of [3,4,5]){
+    let inside=0,left=0,right=0;
+    for(const k of [-1,0,1]){
+     const row=Math.round(y+k*radius*res*.35)*w;
+     for(const j of [-1,0,1])inside+=gray[row+Math.round(x+j*radius*res*.45)]/9;
+     left+=gray[row+Math.round(x-1.35*radius*res)]/3;right+=gray[row+Math.round(x+1.35*radius*res)]/3;
+    }
+    const vertical=Math.min(gray[Math.round(y-1.4*radius*res)*w+x],gray[Math.round(y+1.4*radius*res)*w+x])-inside;
+    const score=Math.min(left,right)-inside+Math.min(30,vertical)*.5;
+    if(vertical>6&&(!eye||score>eye.score))eye={x,y,score};
+   }
+  }
+  const valid=eye&&eye.score>=34;
+  const q=local(valid?screen(eye.x,eye.y):screen(cx,cy-ry*.15),angle);
+  inner[side][0]=q;inner[side][1]={...q};
+  report.push(valid?'พบกรอบและจุดตา'+sideName:'พบกรอบ'+sideName+' · ตรวจจุดตา');
+ }
+ return report.join(' / ');
+}
+function alignTilted(parent,wedge){
+ const [a,,b]=corners(parent);
+ wedge.basis=parent.basis-45;
+ if(parent.rim?.length){
+  // Map the original contour into the corrected lens opening, then take its four diagonal extremes.
+  const rim=parent.rim.map(p=>spin(p,parent.basis));
+  const xs=rim.map(p=>p.x),ys=rim.map(p=>p.y);
+  const l=Math.min(...xs),r=Math.max(...xs),t=Math.min(...ys),bottom=Math.max(...ys);
+  if(r>l&&bottom>t){
+   const projected=rim.map(p=>spin({x:a.x+(p.x-l)*(b.x-a.x)/(r-l),y:a.y+(p.y-t)*(b.y-a.y)/(bottom-t)},-45));
+   const u=projected.map(p=>p.x),v=projected.map(p=>p.y);
+   wedge[0]={x:Math.min(...u),y:Math.min(...v)};wedge[1]={x:Math.max(...u),y:Math.max(...v)};return;
+  }
+ }
+ // Starting estimate from the annotated sample when the rim is unclear.
+ const width=b.x-a.x,height=b.y-a.y;
+ const centre=spin({x:(a.x+b.x)/2,y:(a.y+b.y)/2-.05*height},-45);
+ const half=(width+height)*.78/(2*Math.SQRT2);
+ wedge[0]={x:centre.x-half,y:centre.y-half};wedge[1]={x:centre.x+half,y:centre.y+half};
+}
+function seedFrames(){
+ // Lens centres are estimated from the calibrated bar. All positions remain editable.
+ const w=view.width,h=view.height,cy=h*.55;
+ const centres=[w*.30,w*.70];
+ const box=(cx,halfW,halfH)=>Object.assign([
+  local({x:cx-halfW,y:cy-halfH},angle),local({x:cx+halfW,y:cy+halfH},angle)
+ ],{basis:angle,box:true});
+ const halfLens=30*pixelsPerMm();
+ const outer=centres.map(x=>{
+  const pair=box(x,halfLens,halfLens);
+  for(const p of pair)p.y+=10*pixelsPerMm();
+  return pair;
+ });
+ const inner=centres.map((x,i)=>box(x+(i?-1:1)*w*.045,0,0));
+ const tilted=outer.map(parent=>{
+  const wedge=Object.assign([],{tilted:true});alignTilted(parent,wedge);return wedge;
+ });
+ const message=fitLensRegions(outer,inner,tilted);readings.push(...outer,...inner,...tilted);return message;
+}
+function longestSide([a,b]){return Math.max(Math.abs(b.x-a.x),Math.abs(b.y-a.y))/pixelsPerMm()}
+function finishMeasurement(start,end){
+ const pair=measurementMode==='tilt'?makeTilted(start,end):[start,end];
+ if(pair.tilted&&(Math.abs(pair[0].x-pair[1].x)<1||Math.abs(pair[0].y-pair[1].y)<1)){
+  render();say('ลากระหว่างมุมตรงข้ามให้กรอบเอียงมีพื้นที่');return;
+ }
+ remember();readings.push(pair);first=null;
+ if(!pair.tilted||tiltedBoxes().length===2)measurementMode='box';
+ render();promptPoint();
+}
+const rectangles=()=>readings.filter(pair=>pair.box);
+function isFitPoint(pair){return !!pair?.box&&rectangles().indexOf(pair)>=2}
+function nextParent(list){
+ return list.length===2||list.length===3?list[list.length-2]:null;
+}
+function constrainBox(pair,preview,moving,parent){
+ const list=rectangles(),index=list.indexOf(pair);
+ const outer=parent||((index===2||index===3)?list[index-2]:null);
+ if(outer){
+  const [lo,,hi]=corners(outer);
+  if(moving){
+   const [a,,b]=corners(pair);
+   const dx=clamp(preview[0].x-pair[0].x,lo.x-a.x,hi.x-b.x),dy=clamp(preview[0].y-pair[0].y,lo.y-a.y,hi.y-b.y);
+   return pair.map(p=>({x:p.x+dx,y:p.y+dy}));
+  }
+  return preview.map(p=>({x:clamp(p.x,lo.x,hi.x),y:clamp(p.y,lo.y,hi.y)}));
+ }
+ const child=(index===0||index===1)?list[index+2]:null;
+ if(child&&!moving){
+  const [a,,b]=corners(preview),[lo,,hi]=corners(child);
+  return [{x:Math.min(a.x,lo.x),y:Math.min(a.y,lo.y)},{x:Math.max(b.x,hi.x),y:Math.max(b.y,hi.y)}];
+ }
+ return preview;
+}
+function commitBox(pair,points,moving){
+ const list=rectangles(),index=list.indexOf(pair),child=index>=0&&index<2?list[index+2]:null;
+ if(moving&&child){
+  const dx=points[0].x-pair[0].x,dy=points[0].y-pair[0].y;
+  for(const p of child){p.x+=dx;p.y+=dy}
+ }
+ pair[0]=points[0];pair[1]=points[1];
+}
+function boxGap(first,second){
+ const polygons=[first,second].map(pair=>corners(pair).map(p=>display(p,pair.basis)));
+ let separated=false,min=Infinity,ends=null;
+ for(let k=0;k<2;k++){
+  const polygon=polygons[k],other=polygons[1-k];
+  polygon.forEach((a,i)=>{
+   const b=polygon[(i+1)%4],dx=b.x-a.x,dy=b.y-a.y,len=dx*dx+dy*dy;
+   const project=p=>(p.x-a.x)*(-dy)+(p.y-a.y)*dx;
+   const own=polygon.map(project),opp=other.map(project);
+   if(Math.max(...own)<Math.min(...opp)||Math.max(...opp)<Math.min(...own))separated=true;
+   for(const p of other){
+    const t=clamp(((p.x-a.x)*dx+(p.y-a.y)*dy)/len,0,1);
+    const q={x:a.x+t*dx,y:a.y+t*dy},d=distance(p,q);
+    if(d<min){min=d;ends=[p,q]}
+   }
+  });
+ }
+ return {mm:separated?min/pixelsPerMm():0,ends:separated?ends:null};
+}
+el('nested').onclick=()=>{creatingChild=true;selected=null;render();say('ลากจากด้านในกรอบแม่เพื่อสร้างกรอบย่อย')};
+function fittingValues(point,index,parents){
+ const [one,two]=parents.map(pair=>corners(pair));
+ const parent=parents[index-2],basis=parent.basis;
+ const horizontal=parents.map((pair,i)=>(i?two:one).map(p=>local(display(p,pair.basis),basis).x)).sort((a,b)=>Math.min(...a)-Math.min(...b));
+ const bridgeX=(Math.max(...horizontal[0])+Math.min(...horizontal[1]))/2;
+ const q=local(display(point[0],point.basis),basis),scale=pixelsPerMm();
+ return {pd:Math.abs(q.x-bridgeX)/scale,fh:(corners(parent)[2].y-q.y)/scale};
+}
+function fittingLabels(point,index,parents){
+ const {pd,fh}=fittingValues(point,index,parents);
+ return ['PD '+(index===2?'ขวา':'ซ้าย')+' '+pd.toFixed(2)+' mm','FH '+fh.toFixed(2)+' mm'];
+}
+const boxTool=()=>measurementMode==='box';
+const clamp=(n,low,high)=>Math.max(low,Math.min(high,n));
+function corners([a,b]){
+ const l=Math.min(a.x,b.x),r=Math.max(a.x,b.x),t=Math.min(a.y,b.y),bottom=Math.max(a.y,b.y);
+ return [{x:l,y:t},{x:r,y:t},{x:r,y:bottom},{x:l,y:bottom}];
+}
+function lensSize([a,b]){
+ const scale=pixelsPerMm();
+ return {width:Math.abs(b.x-a.x)/scale,height:Math.abs(b.y-a.y)/scale};
+}
+function dimensions(pair){
+ const {width,height}=lensSize(pair);
+ return 'สูง '+height.toFixed(2)+' mm · กว้าง '+width.toFixed(2)+' mm';
+}
+function say(message){el('status').textContent=message}
+function promptPoint(){
+ if(barMode()&&reference.length<4)say('แตะจุดตัดลายขาวดำที่ '+(reference.length+1)+' จากซ้าย (ทั้งหมด 4 จุด)');
+ else if(reference.length<2) say(reference.length?'แตะจุดปลายของระยะอ้างอิง':'แตะจุดเริ่มต้นของระยะอ้างอิง');
+ else if(boxTool()&&rectangles().length>=measurementLimit)say('ครบ 4 กรอบแล้ว • แตะเส้นขอบเพื่อปรับขนาด หรือลากจุด ✥ เพื่อย้ายกรอบ');
+ else if(boxTool())say('ลากเพื่อสร้างกรอบ • เลือกกรอบแล้วลากจุด ✥ ด้านนอกเพื่อย้าย • ลากเส้นขอบหรือมุมเพื่อปรับขนาด');
+ else if(measurementMode==='tilt')say(hasRoom()?'ลากระหว่างมุมตรงข้ามของกรอบเอียง 45° หมายเลข '+(tiltedBoxes().length+1):'วาดกรอบเอียงครบ 2 กรอบแล้ว');
+ else say(hasRoom()?'ลากเส้นจุดต่อจุด หรือแตะสองจุด':'วัดวัดจุดต่อจุดแล้ว');
+}
+function stopCamera(){
+ if(stream) stream.getTracks().forEach(track=>track.stop());
+ el('quickTools').hidden=el('imageTools').hidden=!hasPhoto;
+ stream=null;stage.style.width=(hasPhoto?zoom*100:100)+'%';video.srcObject=null;video.hidden=true;el('controls').hidden=true;
+ el('empty').hidden=hasPhoto;view.hidden=!hasPhoto;
+}
+let overflowLabels=[];el('fitFooter').hidden=true;
+function render(){
+ overflowLabels=[];
+ const idle=!hasPhoto||view.hidden;
+ el('quickTools').hidden=el('imageTools').hidden=idle;
+ el('boxFine').hidden=idle||!selected||!boxTool();
+ const boxAim=reference.length===targetCount();
+ el('autoBar').disabled=idle||!barMode()||reference.length===4;el('printA4').disabled=idle||!boxAim;
+ const aiming=!idle&&!panning&&(boxAim||(barMode()&&reference.length<4));
+ if(!aiming)el('aimCursor').style.display='none';
+ const ready=!idle&&barMode()&&reference.length===4;
+ el('grid').disabled=!ready;
+ if(!ready)fineIndex=-1;
+ el('aimPanel').hidden=!barMode();
+ refButtons.forEach((b,i)=>{b.disabled=!ready;b.classList.toggle('primary',i===fineIndex);b.setAttribute('aria-pressed',String(i===fineIndex))});
+ arrowButtons.forEach(b=>b.disabled=!ready||fineIndex<0);
+ for(const [id,mode] of [['boxTool','box'],['tiltTool','tilt'],['lineTool','line']]){
+  const button=el(id),active=measurementMode===mode;
+  button.disabled=idle||reference.length<targetCount();
+  button.setAttribute('aria-pressed',String(active));button.classList.toggle('primary',active);
+ }
+ view.classList.toggle('aim',aiming);
+ for(const id of ['pan','save'])el(id).disabled=idle;
+ el('out').disabled=idle||zoom<=1;el('in').disabled=idle||zoom>=4;
+ el('zoom').textContent=Math.round(zoom*100)+'%';
+ stage.style.width=(idle?100:zoom*100)+'%';
+ viewport.classList.toggle('pan',panning);el('pan').setAttribute('aria-pressed',String(panning));el('pan').textContent=panning?'กลับไปวัด':'เลื่อนดูภาพ';
+ el('edgeTools').hidden=idle||rectangles().length<2;
+ const list=rectangles(),parent=nextParent(list),nested=el('nested');
+ function shown(pair){
+  if(!drag?.target)return pair;
+  if(drag.target===pair)return drag.preview;
+  const i=list.indexOf(pair);
+  if(!drag.anchor&&!drag.edge&&(i===2||i===3)&&list[i-2]===drag.target){
+   const dx=drag.preview[0].x-drag.target[0].x,dy=drag.preview[0].y-drag.target[0].y;
+   return Object.assign(pair.map(p=>({x:p.x+dx,y:p.y+dy})),{basis:pair.basis});
+  }
+  return pair;
+ }
+ nested.hidden=idle||!boxTool()||!parent;nested.textContent='วางจุด '+(list.length+1)+' ในกรอบ '+(list.indexOf(parent)+1);
+ const pick=el('pick'),boxes=list.map((pair,i)=>new Option((i>=2?'จุด ':'กรอบ ')+(i+1),String(readings.indexOf(pair))));
+ pick.replaceChildren(new Option(boxes.length?'เลือกกรอบ…':'ยังไม่มีกรอบ',''),...boxes);pick.disabled=!boxes.length||idle;
+ pick.value=selected?String(readings.indexOf(selected)):'';
+ el('undo').disabled=idle||!past.length;el('redo').disabled=idle||!future.length;
+ el('reset').disabled=!hasPhoto;lengthInput.disabled=reference.length===2;
+ const tilted=tiltedBoxes();
+ const maximum=tilted.length?Math.max(...tilted.map(pair=>longestSide(drag?.target===pair?drag.preview:pair))).toFixed(2)+' mm':'';
+ const results=el('results'),frames=el('frameResults'),parents=list.slice(0,2).map(shown);
+ results.replaceChildren();frames.replaceChildren();
+ el('frameHeading').hidden=!list.length&&!maximum;
+ function addReading(container,label,pair){
+  const row=document.createElement('li');
+  if(pair){
+   const button=document.createElement('button');
+   button.textContent=label;button.setAttribute('aria-pressed',String(pair===selected));
+   button.onclick=()=>choose(pair);row.append(button);
+  }else row.textContent=label;
+  container.append(row);
+ }
+ list.slice(2,4).forEach((pair,i)=>addReading(results,fittingLabels(shown(pair),i+2,parents).join(' · '),pair));
+ if(list.length>=4){
+  const [right,left]=list.slice(2,4).map((pair,i)=>fittingValues(shown(pair),i+2,parents));
+  const pd=((right.pd+left.pd)/2).toFixed(2),fh=((right.fh+left.fh)/2).toFixed(2);
+  addReading(results,'PD เฉลี่ย '+pd+' mm · FH เฉลี่ย '+fh+' mm');
+ }
+ readings.filter(pair=>!pair.box&&!pair.tilted).forEach(pair=>addReading(results,'วัดจุดต่อจุด · '+measured(...pair).toFixed(2)+' mm'));
+ list.slice(0,2).forEach((pair,i)=>addReading(frames,(i?'เลนส์ซ้าย':'เลนส์ขวา')+' · '+dimensions(shown(pair)),pair));
+ if(parents.length===2){
+  const [right,left]=parents.map(lensSize);
+  const width=(right.width+left.width)/2,height=(right.height+left.height)/2;
+  addReading(frames,'สูงเฉลี่ย '+height.toFixed(2)+' mm');
+  addReading(frames,'กว้างเฉลี่ย '+width.toFixed(2)+' mm');
+ }
+ if(maximum)addReading(frames,'ทแยง '+maximum);
+ const grip=selected&&!isFitPoint(selected)&&boxTool()&&!idle?moveGrip(shown(selected)):null;
+ el('moveGrip').hidden=!grip;
+ if(grip){el('moveGrip').style.left=(100*grip.x/view.width)+'%';el('moveGrip').style.top=(100*grip.y/view.height)+'%'}
+ const gap=list.length>=2?boxGap(shown(list[0]),shown(list[1])):null;
+ el('gapResult').hidden=!gap||idle;
+ if(!hasPhoto)return;
+ if(gap){
+  const message='สะพาน '+gap.mm.toFixed(2)+' mm';
+  el('gapResult').textContent=message;
+  addReading(frames,message);overflowLabels.push(message);
+ }
+ ctx.clearRect(0,0,view.width,view.height);ctx.save();ctx.translate(originX,originY);ctx.rotate(angle*Math.PI/180);ctx.drawImage(photo,-photo.width/2,-photo.height/2);ctx.restore();
+ const unit=view.width/Math.max(view.clientWidth,1);
+ const radius=barMode()&&reference.length>=2?4*pixelsPerMm():10*unit;
+ let pointerRadius=boxAim?5.5*pixelsPerMm():10*unit;
+ if(barMode()&&reference.length<4)pointerRadius=reference.length<2?22.5*unit:4*pixelsPerMm();
+ el('aimCursor').style.width=(2*pointerRadius/unit*1.04)+'px';
+ el('aimDot').setAttribute('r',boxAim?1.25:35*unit/pointerRadius);
+ el('aimDot').setAttribute('fill',boxAim?'#94f6d2':'#ffdf00');
+ const hairline=unit/(window.devicePixelRatio||1);
+ if(ready&&el('grid').checked)drawGrid(hairline);
+ const occupied=[];
+ function reserve(points){
+  const xs=points.map(p=>p.x),ys=points.map(p=>p.y);
+  const box=[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)];
+  if(box[0]<0||box[1]<0||box[2]>view.width||box[3]>view.height)return false;
+  if(occupied.some(([l,t,r,b])=>box[0]<r&&box[2]>l&&box[1]<b&&box[3]>t))return false;
+  occupied.push(box);return true;
+ }
+ function mark(points,color,label,showDots=true){
+  if(!points.length)return;
+  ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=hairline;
+  if(points.length===2){ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);ctx.lineTo(points[1].x,points[1].y);ctx.stroke()}
+  if(showDots)for(const p of points){ctx.beginPath();ctx.arc(p.x,p.y,4*unit,0,2*Math.PI);ctx.fill();ctx.strokeStyle='#191329';ctx.lineWidth=unit;ctx.stroke()}
+  if(label){ctx.font='300 '+14*unit+'px sans-serif';const w=ctx.measureText(label).width+8*unit;
+   const x=Math.max(0,Math.min(view.width-w,(points[0].x+points[1].x-w)/2));
+   const y=Math.max(19*unit,Math.min(view.height,(points[0].y+points[1].y)/2-6*unit));
+   for(const shift of [0,-1,1,-2,2,-3,3]){
+    const baseline=y-3*unit+shift*22*unit;
+    if(reserve([{x,y:baseline-16*unit},{x:x+w,y:baseline+6*unit}])){
+     ctx.fillStyle='#00e95c';ctx.fillText(label,x+4*unit,baseline);return;
+    }
+   }
+   if(!overflowLabels.includes(label))overflowLabels.push(label);
+  }
+ }
+ // Place the primary annotations before the optional dimension labels reserve space.
+ function annotation(rows,anchor,color,align='center',boldFirst=false,outline=false,below=null,fixed=false){
+  ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
+  const spacing=20*unit, height=rows.length*spacing;
+  const font=i=>rows[0]==='ทแยง'?'bold '+14*unit+'px Consolas, monospace':(boldFirst&&((rows.includes('สะพาน')&&rows[i]==='สะพาน')||(!rows.includes('สะพาน')&&i===0))?'bold ':'400 ')+14*unit+'px sans-serif';
+  const width=Math.min(view.width,Math.max(...rows.map((row,i)=>{ctx.font=font(i);return ctx.measureText(row).width+4*unit})));
+  const x=clamp(anchor.x+(align==='left'?width/2:align==='right'?-width/2:0),width/2,view.width-width/2);
+  const initial=clamp(anchor.y,height/2,view.height-height/2);
+  for(let lane=0;lane<=Math.ceil(view.height/spacing);lane++){
+   let placed=false;
+   for(const y of lane?[initial-lane*spacing,initial+lane*spacing]:[initial]){
+    if(below!==null&&(y-height/2<below||crossesMeasurement(x-width/2,y-height/2,x+width/2,y+height/2)))continue;
+    if(!reserve([{x:x-width/2,y:y-height/2},{x:x+width/2,y:y+height/2}])&&!fixed)continue;
+    rows.forEach((row,i)=>{
+     const baseline=y+(i-(rows.length-1)/2)*spacing;
+     ctx.font=font(i);ctx.fillStyle=Array.isArray(color)?color[i]:color;
+     if(outline){ctx.strokeStyle='#241c2a';ctx.lineWidth=2*unit;ctx.strokeText(row,x,baseline,width)}
+     ctx.fillText(row,x,baseline,width);
+    });
+    placed=true;break;
+   }
+   if(placed){ctx.restore();return true}
+  }
+  if(below===null)overflowLabels.push(rows.join(' '));ctx.restore();return false;
+ }
+ const identity=[el('person').value.trim(),exifDate,el('phone').value.trim()].filter(Boolean);
+ if(identity.length)annotation(identity,{x:view.width/2,y:(identity.length*10+4)*unit},'#fff','center',false,true);
+ const visibleBoxes=list.map(shown);
+ if(drag&&!drag.target)visibleBoxes.push(drag.preview);
+ const bounds=visibleBoxes.map(pair=>{
+  const pts=corners(pair).map(q=>display(q,pair.basis));
+  return {left:Math.min(...pts.map(q=>q.x)),right:Math.max(...pts.map(q=>q.x)),
+          top:Math.min(...pts.map(q=>q.y)),bottom:Math.max(...pts.map(q=>q.y))};
+ });
+ const edges=[];
+ for(const pair of [...visibleBoxes,...tilted.map(p=>drag?.target===p?drag.preview:p)]){
+  const pts=corners(pair).map(q=>display(q,pair.basis));
+  pts.forEach((q,i)=>edges.push([q,pts[(i+1)%4]]));
+ }
+ for(const pair of readings.filter(isFreeLine))edges.push(pair.map(q=>display(q)));
+ function crossesMeasurement(l,t,r,b){
+  return edges.some(([a,z])=>{
+   let lo=0,hi=1;
+   for(const [start,delta,min,max] of [[a.x,z.x-a.x,l,r],[a.y,z.y-a.y,t,b]]){
+    if(!delta){if(start<min||start>max)return false;continue}
+    const u=(min-start)/delta,v=(max-start)/delta;
+    lo=Math.max(lo,Math.min(u,v));hi=Math.min(hi,Math.max(u,v));
+   }
+   return lo<=hi;
+  });
+ }
+ if(gap){
+  const [left,right]=bounds.slice(0,2).sort((a,b)=>a.left-b.left);
+  const meanHeight=visibleBoxes.slice(0,2).reduce((sum,p)=>sum+Math.abs(p[1].y-p[0].y),0)/(2*pixelsPerMm());
+  const bridgeRows=['สูงเฉลี่ย '+meanHeight.toFixed(2)+' mm','สะพาน',gap.mm.toFixed(2)+' mm'];
+  annotation(bridgeRows,{x:(left.right+right.left)/2,y:Math.min(left.top,right.top)-9*unit+10*pixelsPerMm()},['#00e95c','#ff1493','#ff1493'],'center',true,true,null,true);
+ }
+ if(maximum)annotation(['ทแยง',maximum],{x:view.width/2,y:view.height-25*unit-20*pixelsPerMm()},'#fff000','center',false,true);
+ function drawTilted(pair,index){
+  const pts=corners(pair).map(q=>display(q,pair.basis));
+  ctx.save();ctx.strokeStyle='#fff000';ctx.lineWidth=hairline;ctx.beginPath();
+  pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.stroke();ctx.restore();
+ }
+ function drawSegment(pair,showLength){
+  const points=pair.map(p=>display(p)),[a,b]=points,label=measured(...pair).toFixed(2)+' mm';
+  const yellow='#fff000';
+  mark(points,yellow,'');
+  if(!showLength)return;
+  ctx.save();ctx.font='bold '+14*unit+'px Consolas, monospace';ctx.fillStyle=yellow;
+  ctx.textAlign='center';ctx.textBaseline='bottom';
+  let tilt=Math.atan2(b.y-a.y,b.x-a.x);
+  if(tilt>Math.PI/2)tilt-=Math.PI;
+  if(tilt< -Math.PI/2)tilt+=Math.PI;
+  const w=ctx.measureText(label).width/2,h=17*unit;
+  const dx=Math.cos(tilt),dy=Math.sin(tilt);
+  const offsets=[[-w,-h],[w,-h],[w,0],[-w,0]].map(([u,v])=>({x:u*dx-v*dy,y:u*dy+v*dx}));
+  let pos;
+  for(const t of [.5,.33,.67,.2,.8]){
+   const x=clamp(a.x+t*(b.x-a.x),-Math.min(...offsets.map(p=>p.x)),view.width-Math.max(...offsets.map(p=>p.x)));
+   const y=clamp(a.y+t*(b.y-a.y),-Math.min(...offsets.map(p=>p.y)),view.height-Math.max(...offsets.map(p=>p.y)));
+   if(!pos)pos={x,y};
+   if(reserve(offsets.map(p=>({x:x+p.x,y:y+p.y})))){pos={x,y};break}
+  }
+  ctx.translate(pos.x,pos.y);ctx.rotate(tilt);ctx.fillText(label,0,-unit);ctx.restore();
+ }
+ if(barMode()){
+  reference.map(p=>display(p)).forEach((p,i,points)=>{
+   if(i)mark([points[i-1],p],'#94f6d2',referenceSpacingMm.toFixed(2)+' mm',false);
+   ctx.beginPath();ctx.arc(p.x,p.y,radius,0,2*Math.PI);
+   ctx.strokeStyle='#191329';ctx.lineWidth=2.5*unit;ctx.stroke();
+   ctx.strokeStyle=i===fineIndex?'#ffe475':'#94f6d2';ctx.lineWidth=1.2*unit;ctx.stroke();
+   ctx.beginPath();ctx.arc(p.x,p.y,.7*unit,0,2*Math.PI);
+   ctx.fillStyle='#ffdf00';ctx.fill();
+   ctx.font='bold '+16*unit+'px sans-serif';ctx.lineWidth=3*unit;ctx.strokeStyle='#191329';ctx.fillStyle='white';
+   const offset=radius+2*unit;
+   const x=Math.min(view.width-12*unit,p.x+offset),y=p.y<offset+16*unit?p.y+offset+16*unit:p.y-offset;
+   ctx.strokeText(String(i+1),x,y);ctx.fillText(String(i+1),x,y);
+  });
+ }else mark(reference.map(p=>display(p)),'#94f6d2',reference.length===2?referenceMM+' mm':'');
+ function drawBox(pair,i,active){
+  const pts=corners(pair),[a,,b]=pts;
+  ctx.save();ctx.translate(originX,originY);ctx.rotate((angle-pair.basis)*Math.PI/180);
+  const textColor=i<2?'#00e95c':'#007aff';
+  const moving=(drag?.target && pair===drag.preview) || (!drag && list[i]===nudgedBox && nudgedBox!==null);
+  ctx.strokeStyle=moving?'#ffdf00':'#fff';
+  ctx.lineWidth=hairline*0.5;ctx.strokeRect(a.x,a.y,b.x-a.x,b.y-a.y);
+  if(active)for(const p of pts){ctx.beginPath();ctx.arc(p.x,p.y,5*unit,0,2*Math.PI);ctx.fillStyle='#fff';ctx.fill();ctx.stroke()}
+  ctx.font='bold '+14*unit+'px sans-serif';ctx.fillStyle=textColor;ctx.strokeStyle='#281c33';ctx.lineWidth=3*unit;
+  ctx.textAlign='right';ctx.textBaseline='middle';
+  const scale=pixelsPerMm();
+  const width=b.x-a.x,height=b.y-a.y;
+  const rows=['เลนส์กว้าง '+(width/scale).toFixed(2)+' mm','สูง '+(height/scale).toFixed(2)+' mm'];
+  ctx.font='300 '+14*unit+'px sans-serif';ctx.textAlign='center';ctx.fillStyle=textColor;
+  function edgeLabel(text,vertical,side){
+   const half=ctx.measureText(text).width/2+unit,thickness=10*unit,gap=thickness+4*unit;
+   const hw=vertical?thickness:half,hh=vertical?half:thickness;
+   const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+   const positions=[];
+   for(const lane of [0,1,2,3]){
+    const d=gap+lane*22*unit;
+    if(side==='top')positions.push([mx,a.y-d],[mx,a.y+d]);
+    else if(side==='left')positions.push([a.x-d,my],[a.x+d,my]);
+    else if(side==='right')positions.push([b.x+d,my],[b.x-d,my]);
+    else positions.push(...(vertical?[[b.x+d,my],[a.x-d,my]]:[[mx,b.y+d],[mx,a.y-d]]));
+   }
+   for(const [x,y] of positions){
+    const bounds=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([dx,dy])=>display({x:x+dx,y:y+dy},pair.basis));
+    if(!reserve(bounds))continue;
+    ctx.save();ctx.translate(x,y);if(vertical)ctx.rotate(-Math.PI/2);
+    ctx.fillText(text,0,0);ctx.restore();return;
+   }
+   overflowLabels.push('กรอบ '+(i+1)+' · '+text);
+  }
+  if(gap&&(i===2||i===3)){
+   edgeLabel(rows[0],false);
+  }else{edgeLabel(rows[0],false)}
+  ctx.restore();
+ }
+ if(el('showRim').checked){
+  ctx.save();ctx.strokeStyle='#00ffff';ctx.lineWidth=unit;ctx.setLineDash([3*unit,2*unit]);
+  for(const pair of list.slice(0,2)){
+   if(!pair.rim)continue;ctx.beginPath();
+   pair.rim.forEach((q,i)=>{const p=display(q);if(i)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y)});
+   ctx.closePath();ctx.stroke();
+  }
+  ctx.restore();
+ }
+ readings.forEach((pair,i)=>{
+  if(isFitPoint(pair)){
+   const p=display(shown(pair)[0],pair.basis),scale=pixelsPerMm();
+   ctx.save();ctx.lineWidth=hairline;ctx.strokeStyle=drag?.target===pair||nudgedBox===pair?'#ffdf00':'#00d9ff';
+   for(const diameter of [11,1]){
+    ctx.beginPath();ctx.arc(p.x,p.y,diameter*scale/2,0,2*Math.PI);ctx.stroke();
+   }
+   ctx.restore();
+  }
+  else if(pair.box)drawBox(shown(pair),list.indexOf(pair),selected===pair&&boxTool());
+  else if(pair.tilted)drawTilted(drag?.target===pair?drag.preview:pair,tilted.indexOf(pair));
+  else drawSegment(pair,true);
+ });
+ if(drag&&!drag.target&&!drag.outer)drawBox(drag.preview,list.length,true);
+ tilted.forEach((pair,j)=>{
+  const point=list[j+2];if(!point)return;
+  const [a,,b]=corners(shown(pair)),centre=display({x:(a.x+b.x)/2,y:(a.y+b.y)/2},pair.basis);
+  const [pd,fh]=fittingLabels(shown(point),j+2,list.slice(0,2).map(shown));
+  ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=2*unit;ctx.strokeStyle='#27151a';ctx.fillStyle='#ff3030';
+  [j?'ซ้าย':'ขวา',pd.replace(/PD (ซ้าย|ขวา) /,'PD '),fh].forEach((text,i)=>{
+   ctx.font=(i?'':'bold ')+14*unit+'px sans-serif';const y=centre.y+5*pixelsPerMm()+(i-1)*18*unit;
+   ctx.strokeText(text,centre.x,y);ctx.fillText(text,centre.x,y);
+  });ctx.restore();
+ });
+ if(lineEnd&&measurementMode==='tilt')drawTilted(makeTilted(first||lineStart,lineEnd),tilted.length);
+ else if(lineEnd)drawSegment([first||lineStart,lineEnd],true);
+ else if(first)mark([display(first)],'#ffdf00','');
+ if(list.length===4){
+  const parents=list.slice(0,2).map(shown);
+  const [right,left]=list.slice(2).map((point,i)=>fittingValues(shown(point),i+2,parents));
+  const rows=['PD เฉลี่ย '+((right.pd+left.pd)/2).toFixed(2)+' mm','FH เฉลี่ย '+((right.fh+left.fh)/2).toFixed(2)+' mm'];
+  const [a,b]=bounds;
+  annotation(rows,{x:(a.left+a.right+b.left+b.right)/4,y:(a.top+a.bottom+b.top+b.bottom)/4},'#ff3030','center',false,true,null,true);
+ }
+}
+function resetScale(){el('edgeChoice').value='';el('showRim').checked=false;stopFollow();calibrationPointer=null;keyPart=null;clearLineDrag();creatingChild=false;reference=[];readings=[];first=null;selected=null;drag=null;measurementMode='box';referenceMM=0;geometry();render();promptPoint()}
+let originalExif=null,exifDate='';
+let photoStamp='';
+function localTime(source,date){
+ const pad=n=>String(n).padStart(2,'0');
+ const stamp=date.getFullYear()+pad(date.getMonth()+1)+pad(date.getDate())+'_'+pad(date.getHours())+pad(date.getMinutes())+pad(date.getSeconds());
+ return {stamp,label:'เวลาบันทึก '+stamp.replace(/^(....)(..)(..)_(..)(..)(..)$/, '$1-$2-$3 $4:$5:$6')};
+}
+function exportName(stamp,name,phone){
+ const safe=value=>value.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g,'-').replace(/[. ]+$/,'');
+ return [stamp,safe(name),safe(phone)].filter(Boolean).join('_')+'.png';
+}
+function locateBarTargets(source){
+ const work=document.createElement('canvas'),ratio=Math.min(1,1100/Math.max(source.width,source.height));
+ const w=work.width=Math.round(source.width*ratio),h=work.height=Math.round(source.height*ratio);
+ if(Math.min(w,h)<20)return null;
+ const g=work.getContext('2d',{willReadFrequently:true});g.drawImage(source,0,0,w,h);
+ const data=g.getImageData(0,0,w,h).data,stride=w+1,sum=new Float64Array(stride*(h+1));
+ for(let y=0;y<h;y++){
+  let row=0;
+  for(let x=0;x<w;x++){
+   const i=(y*w+x)*4;row+=(data[i]*.299+data[i+1]*.587+data[i+2]*.114);
+   sum[(y+1)*stride+x+1]=sum[y*stride+x+1]+row;
+  }
+ }
+ // A genuine target changes brightness on both axes, with matching opposite quadrants.
+ function saddle(x,y,r){
+  const p=y*stride+x,v=r*stride,area=r*r;
+  const a=(sum[p]-sum[p-r]-sum[p-v]+sum[p-v-r])/area;
+  const b=(sum[p+r]-sum[p]-sum[p-v+r]+sum[p-v])/area;
+  const c=(sum[p+v]-sum[p+v-r]-sum[p]+sum[p-r])/area;
+  const d=(sum[p+v+r]-sum[p+v]-sum[p+r]+sum[p])/area;
+  return Math.max(Math.min(a,d)-Math.max(b,c),Math.min(b,c)-Math.max(a,d));
+ }
+ const peaks=[];
+ for(const r of [3,6,10,16,24]){
+  const step=Math.max(1,Math.floor(r/3));
+  for(let y=r+step;y<h-r-step;y+=step)for(let x=r+step;x<w-r-step;x+=step){
+   const score=saddle(x,y,r);
+   if(score<38||score<=saddle(x-step,y,r)||score<saddle(x+step,y,r)||score<=saddle(x,y-step,r)||score<saddle(x,y+step,r))continue;
+   peaks.push({x,y,r,score});
+  }
+ }
+ const candidates=[];
+ for(const p of peaks.sort((a,b)=>b.score-a.score)){
+  if(!candidates.some(q=>Math.hypot(q.x-p.x,q.y-p.y)<Math.max(4,Math.min(q.r,p.r))))candidates.push(p);
+  if(candidates.length===180)break;
+ }
+ let best=null,runner=null;
+ for(const a of candidates)for(const d of candidates){
+  const dx=(d.x-a.x)/3,dy=(d.y-a.y)/3,spacing=Math.hypot(dx,dy);
+  if(dx<20||Math.abs(dy)>dx*.55)continue;
+  const pts=[a];
+  for(let k=1;k<=2;k++){
+   let found=null,err=spacing*.12;
+   for(const p of candidates){
+    const dist=Math.hypot(p.x-a.x-k*dx,p.y-a.y-k*dy);
+    if(dist<err){found=p;err=dist}
+   }
+   if(found)pts.push(found);
+  }
+  if(pts.length!==3)continue;
+  pts.push(d);
+  const r=Math.max(2,Math.round(spacing*.065));
+  if(pts.some(p=>p.x<r||p.y<r||p.x+r>=w||p.y+r>=h))continue;
+  const scores=pts.map(p=>saddle(p.x,p.y,r));
+  if(Math.min(...scores)<38)continue;
+  const error=pts.slice(1,3).reduce((e,p,i)=>e+Math.hypot(p.x-a.x-(i+1)*dx,p.y-a.y-(i+1)*dy)/spacing,0);
+  const score=Math.min(...scores)*.5+scores.reduce((x,y)=>x+y,0)/8-200*error;
+  const match={pts,r,score};
+  if(!best||score>best.score){runner=best;best=match}else if(!runner||score>runner.score)runner=match;
+ }
+ if(!best||best.score<55||(runner&&runner.score>best.score*.96&&runner.pts.some((p,i)=>Math.hypot(p.x-best.pts[i].x,p.y-best.pts[i].y)>best.r)))return null;
+ return best.pts.map(p=>{
+  let x=p.x,y=p.y,top=-Infinity;
+  const reach=Math.ceil(best.r/2),r=best.r;
+  for(let j=Math.max(r,p.y-reach);j<=Math.min(h-r,p.y+reach);j++)
+   for(let i=Math.max(r,p.x-reach);i<=Math.min(w-r,p.x+reach);i++){
+    const score=saddle(i,j,r);if(score>top){top=score;x=i;y=j}
+   }
+  return {x:(x/w-.5)*source.width,y:(y/h-.5)*source.height};
+ });
+}
+function findBar(){
+ if(!hasPhoto||!barMode()||reference.length===4)return;
+ const points=locateBarTargets(photo);
+ if(!points){say('หาเป้าขาวดำครบ 4 จุดไม่ชัดเจน · แตะจุดจากซ้ายไปขวาเพื่อตั้งสเกล');return}
+ remember();reference=points;manualAngle=0;zoom=1;geometry();const fit=seedFrames();viewport.scrollTo(0,0);render();
+ say('พบเป้าขาวดำ 4 จุด · '+fit+' · ตรวจแนวขอบเลนส์และลากปรับก่อนอ่านค่า');
+}
+el('autoBar').onclick=findBar;
+function usePhoto(source,w,h,time){
+ past.length=future.length=0;
+ originalExif=time?.exif||null;exifDate=time?.date||'';
+ photoStamp=time?.stamp||'';
+ el('photoTime').textContent=time?.label||'ไม่พบวันเวลาในไฟล์ภาพ';
+ manualAngle=0;angle=0;zoom=2;panning=false;viewport.scrollTo(0,0);
+ const size=Math.min(1,3000/Math.max(w,h));
+ const buffer=document.createElement('canvas');buffer.width=Math.max(1,Math.round(w*size));buffer.height=Math.max(1,Math.round(h*size));
+ buffer.getContext('2d').drawImage(source,0,0,buffer.width,buffer.height);
+ photo.width=view.width=buffer.width;photo.height=view.height=buffer.height;
+ photo.getContext('2d').drawImage(buffer,0,0);hasPhoto=true;stopCamera();resetScale();centreOn(display({x:0,y:0}));if(barMode())findBar();
+}
+async function openCamera(id){
+ const current=++revision;stopCamera();say('กำลังเปิดกล้อง…');
+ try{
+  if(!navigator.mediaDevices?.getUserMedia)throw Error('เปิดหน้าเว็บผ่าน HTTPS เพื่อใช้กล้อง หรือใช้ปุ่มเลือกภาพจากเครื่อง');
+  const feed=await navigator.mediaDevices.getUserMedia({audio:false,video:{...(id?{deviceId:{exact:id}}:{facingMode:{ideal:'environment'}}),width:{ideal:1920},height:{ideal:1440}}});
+  if(current!==revision){feed.getTracks().forEach(t=>t.stop());return}
+  stream=feed;video.hidden=false;el('empty').hidden=true;view.hidden=true;stage.style.width="100%";viewport.scrollTo(0,0);video.srcObject=feed;await video.play();if(current!==revision)return;
+  view.hidden=true;el('quickTools').hidden=el('imageTools').hidden=true;el('empty').hidden=true;video.hidden=false;el('controls').hidden=false;
+  const devices=(await navigator.mediaDevices.enumerateDevices().catch(()=>[])).filter(d=>d.kind==='videoinput'&&d.deviceId);
+  if(current!==revision)return;
+  camera.replaceChildren(...devices.map((d,i)=>new Option(d.label||'กล้อง '+(i+1),d.deviceId)));
+  const active=feed.getVideoTracks()[0].getSettings().deviceId;
+  if(devices.some(d=>d.deviceId===active))camera.value=active;
+  camera.disabled=devices.length<2;say('จัดภาพให้เห็นวัตถุและอุปกรณ์อ้างอิง แล้วกดถ่ายภาพเพื่อวัด');
+ }catch(e){if(current!==revision)return;stopCamera();say(e.name==='NotAllowedError'?'เปิดกล้องไม่ได้ กรุณาอนุญาตกล้องในเบราว์เซอร์ หรือเลือกภาพจากเครื่อง':e.name==='Error'?e.message:'กล้องไม่พร้อมใช้งาน ลองเปิดกล้องอีกครั้งหรือเลือกภาพจากเครื่อง')}
+}
+el('open').onclick=()=>{if(navigator.maxTouchPoints||!navigator.mediaDevices?.getUserMedia){++revision;stopCamera();el('nativeShot').click()}else openCamera()};el('webCam').onclick=()=>openCamera();camera.onchange=()=>openCamera(camera.value);
+el('cancel').onclick=()=>{++revision;stopCamera();if(hasPhoto)promptPoint();else say('เปิดกล้องหรือเลือกภาพเพื่อเริ่มวัด')};
+el('snap').onclick=()=>{if(video.videoWidth&&video.videoHeight)usePhoto(video,video.videoWidth,video.videoHeight,localTime('เวลาถ่าย',new Date()))};
+function photoMetadata(bytes){
+ let profile=null;
+ const d=new DataView(bytes),u=new Uint8Array(bytes);
+ const str=(p,n)=>String.fromCharCode(...u.subarray(p,p+n));
+ function tiff(base,end){
+  if(str(base,4)==='Exif')base+=6;
+  profile=u.slice(base,end);
+  const le=str(base,2)==='II';
+  if(!le&&str(base,2)!=='MM')return '';
+  const v=new DataView(bytes,base,end-base),short=p=>v.getUint16(p,le),long=p=>v.getUint32(p,le);
+  if(short(2)!==42)return '';
+  function tag(offset,key){
+   const count=short(offset);
+   for(let i=0;i<count;i++){
+    const p=offset+2+12*i;
+    if(short(p)!==key)continue;
+    if(key===0x8769)return long(p+8);
+    const addr=long(p+8);
+    if(short(p+2)===2&&long(p+4)>=19&&addr+19<=v.byteLength)return str(base+addr,19);
+   }
+  }
+  const root=long(4),exif=tag(root,0x8769);
+  if(!exif)return '';
+  const date=tag(exif,0x9003)||'';
+  const m=/^(\d{4}):(\d{2}):(\d{2}) (\d{2}:\d{2}:\d{2})$/.exec(date);
+  return m?{date:m[3]+'/'+m[2]+'/'+m[1],stamp:m[1]+m[2]+m[3]+'_'+m[4].replace(/:/g,''),label:'เวลาบันทึก '+m[1]+'-'+m[2]+'-'+m[3]+' '+m[4]}:null;
+ }
+ function inspect(){
+  if(str(4,4)==='ftyp'){const data=heifExif(u);if(data){profile=data;return photoMetadata(data.buffer)}return null}
+  if(str(0,2)==='II'||str(0,2)==='MM')return tiff(0,u.length);
+  if(d.getUint16(0)===0xffd8){
+   let p=2;
+   while(p+4<=u.length&&u[p]===255){
+    while(u[p]===255)p++;
+    const marker=u[p++];if(marker===218||marker===217)break;
+    const n=d.getUint16(p);if(n<2||p+n>u.length)break;
+    if(marker===225&&str(p+2,6)==='Exif\0\0'){const time=tiff(p+2,p+n);if(time)return time}
+    p+=n;
+   }
+  }else{
+   const png=d.getUint32(0)===0x89504e47,webp=str(8,4)==='WEBP';
+   if(!png&&!webp)return '';
+   for(let p=png?8:12;p+8<=u.length;){
+    const n=d.getUint32(p+(png?0:4),webp),name=str(p+(png?4:0),4),end=p+8+n;
+    if(end>u.length)break;
+    if(name===(png?'eXIf':'EXIF'))return tiff(p+8,end);
+    p=end+(png?4:n%2);
+   }
+  }
+ }
+ let time=null;
+ try{time=inspect()}catch{/* Keep any original EXIF already located. */}
+ return {...time,exif:profile};
+}
+el('nativeShot').onchange=el('file').onchange=async event=>{
+ const file=event.target.files[0];if(!file)return;event.target.value='';
+ const current=++revision;stopCamera();
+ let url=URL.createObjectURL(file);
+ try{
+  const bytes=await file.arrayBuffer(),info=photoMetadata(bytes);
+  const heic=/\.(?:hei[cf]|hif)$/i.test(file.name)||/hei[cf]/i.test(file.type)||String.fromCharCode(...new Uint8Array(bytes).subarray(4,8))==='ftyp';
+  const img=new Image();img.src=url;
+  try{await img.decode()}catch(error){
+   if(!heic)throw error;
+   if(current!==revision)return;
+   say('กำลังเปิดภาพ HEIC…');
+   const decoded=await decodeHeic(file);
+   URL.revokeObjectURL(url);url=URL.createObjectURL(decoded);img.src=url;await img.decode();
+  }
+  if(current!==revision)return;
+  const fallback=file.lastModified?localTime('เวลาแก้ไขไฟล์',new Date(file.lastModified)):null;
+  usePhoto(img,img.naturalWidth,img.naturalHeight,{...fallback,...info});
+ }catch(error){if(current===revision)say('เปิดภาพไม่ได้ · '+error.message)}
+ finally{URL.revokeObjectURL(url)}
+};
+function point(e){
+ const rect=view.getBoundingClientRect();
+ return {x:clamp((e.clientX-rect.left)*view.width/rect.width,0,view.width),y:clamp((e.clientY-rect.top)*view.height/rect.height,0,view.height)};
+}
+function tap(p){
+ if(barMode()&&reference.length<4){
+  const last=reference.at(-1);
+  if(last&&distance(last,p)<1){say('แตะเป้าถัดไปตามแนวแถบ');return}
+  if(reference.length>=2){
+   const start=reference[0],step=distance(start,last)/(reference.length-1);
+   const ex=last.x+(last.x-start.x)/(reference.length-1),ey=last.y+(last.y-start.y)/(reference.length-1);
+   if(Math.hypot(p.x-ex,p.y-ey)>step*0.25){say('ตำแหน่งไม่ตรงแนวหรือระยะอ้างอิง ลองแตะใหม่ หรือตรวจจุดก่อนหน้าด้วยปุ่มย้อน');return}
+  }
+  remember();reference.push(p);
+  if(reference.length===4){manualAngle=0;zoom=1;geometry();seedFrames();viewport.scrollTo(0,0)}
+ }else if(reference.length<targetCount()){
+  const n=lengthInput.valueAsNumber;if(!Number.isFinite(n)||n<=0){say('กรุณาใส่ระยะอ้างอิงมากกว่า 0 mm');return}
+  if(reference.length&&distance(reference[0],p)<1){say('จุดอ้างอิงทั้งสองต้องอยู่คนละตำแหน่ง');return}
+  remember();reference.push(p);referenceMM=n;
+ }else if(hasRoom()){if(first){finishMeasurement(first,p);return}remember();first=p}
+ render();promptPoint();
+};
+const past=[],future=[];
+function snapshot(){
+ return JSON.stringify({referenceSpacingMm,reference,referenceMM,first,measurementMode,fineIndex,manualAngle,selected:readings.indexOf(selected),
+  readings:readings.map(pair=>({points:[...pair],box:pair.box,rim:pair.rim,tilted:pair.tilted,basis:pair.basis})),length:lengthInput.value});
+}
+function remember(){
+ past.push(snapshot());if(past.length>150)past.shift();future.length=0;
+}
+function replay(from,to){
+ if(!from.length||drag||linePointer!==null||view.hidden)return;
+ creatingChild=false;to.push(snapshot());const state=JSON.parse(from.pop());
+ keyPart=null;referenceSpacingMm=state.referenceSpacingMm??35.67;el('spacing').value=referenceSpacingMm;reference=state.reference;referenceMM=state.referenceMM;first=state.first;measurementMode=state.measurementMode;
+ readings=state.readings.map(({points,box,rim,tilted,basis})=>Object.assign(points,{box,rim,tilted,basis}));
+ fineIndex=state.fineIndex;selected=readings[state.selected]||null;lengthInput.value=state.length;
+ manualAngle=state.manualAngle;geometry();
+ render();promptPoint();
+}
+el('undo').onclick=()=>replay(past,future);
+el('redo').onclick=()=>replay(future,past);
+function setMode(mode){el('edgeChoice').value='';keyPart=null;fineIndex=-1;
+ creatingChild=false;
+ if(mode!==measurementMode){clearLineDrag();if(first)remember();first=null;drag=null}
+ measurementMode=mode;panning=false;render();promptPoint();
+}
+el('boxTool').onclick=()=>setMode('box');
+el('tiltTool').onclick=()=>setMode('tilt');
+el('lineTool').onclick=()=>setMode('line');
+let linePointer=null,lineStart=null,lineEnd=null;
+function clearLineDrag(){linePointer=null;lineStart=null;lineEnd=null}
+let refDrag=null;
+function trackReference(e){
+ const p=local(point(e),0),d=refDrag;
+ reference[d.index]={x:clamp(d.original.x+p.x-d.start.x,-photo.width/2,photo.width/2),
+                     y:clamp(d.original.y+p.y-d.start.y,-photo.height/2,photo.height/2)};
+}
+view.onclick=e=>{if(!barMode()&&!panning&&reference.length<targetCount())tap(local(point(e),0))};
+function insideBox(p,pair){
+ const [a,,b]=corners(pair),q=local(p,pair.basis);
+ return q.x>=a.x&&q.x<=b.x&&q.y>=a.y&&q.y<=b.y;
+}
+function moveGrip(pair){
+ const [a,,b]=corners(pair),u=view.width/Math.max(view.clientWidth,1),offset=21*u;
+ const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+ for(const [x,y] of [[mx,a.y-offset],[a.x-offset,my],[mx,b.y+offset],[b.x+offset,my]]){
+  const p=display({x,y},pair.basis);
+  if(p.x>=13*u&&p.x<=view.width-13*u&&p.y>=13*u&&p.y<=view.height-13*u)return p;
+ }
+ return null;
+}
+let calibrationPointer=null,panFrame=0,panPosition=null,lastPanTime=0;
+function canFollow(){return hasPhoto&&!view.hidden&&barMode()&&reference.length<4&&!panning}
+function stopFollow(){
+ cancelAnimationFrame(panFrame);panFrame=0;panPosition=null;lastPanTime=0;
+}
+function followStep(time){
+ panFrame=0;
+ if(!panPosition||!canFollow()){stopFollow();return}
+ const rect=viewport.getBoundingClientRect();
+ function speed(pos,start,size){
+  const margin=Math.min(64,size*.2);
+  return clamp((pos-start-size+margin)/margin,0,1)-clamp((start+margin-pos)/margin,0,1);
+ }
+ const dt=lastPanTime?Math.min(40,time-lastPanTime):16;lastPanTime=time;
+ const dx=speed(panPosition.x,rect.left,viewport.clientWidth)*dt*.40;
+ const dy=speed(panPosition.y,rect.top,viewport.clientHeight)*dt*.40;
+ const x=viewport.scrollLeft,y=viewport.scrollTop;
+ viewport.scrollBy(dx,dy);
+ if(x!==viewport.scrollLeft||y!==viewport.scrollTop)panFrame=requestAnimationFrame(followStep);
+ else lastPanTime=0;
+}
+function followCursor(e){
+ panPosition={x:e.clientX,y:e.clientY};
+ if(!panFrame)panFrame=requestAnimationFrame(followStep);
+}
+el('showRim').onchange=()=>{render();if(el('showRim').checked)say('เส้นประสีฟ้าคือแนวขอบที่ตรวจพบจากภาพต้นฉบับ')};
+el('edgeChoice').onchange=()=>{if(el('edgeChoice').value){panning=false;render();say('แตะขอบช่องเลนส์ด้านในตรงตำแหน่งที่ต้องการวัด')}};
+view.onpointerdown=e=>{
+ if(el('edgeChoice').value&&e.isPrimary&&e.button===0&&!drag&&rectangles().length>=2){
+  const [side,edge]=el('edgeChoice').value.split('-'),j=Number(side),list=rectangles(),pair=list[j];
+  const [a,,b]=corners(pair),q=local(point(e),pair.basis),child=list[j+2];
+  const before=child?fittingValues(child,j+2,list):null;
+  const other=list[1-j],otherCentre=local(display({x:(other[0].x+other[1].x)/2,y:(other[0].y+other[1].y)/2},other.basis),pair.basis);
+  if(edge==='bottom')b.y=q.y;
+  else if(edge==='top')a.y=q.y;
+  else if((otherCentre.x>(a.x+b.x)/2)===(edge==='nose'))b.x=q.x;
+  else a.x=q.x;
+  if(b.x<=a.x||b.y<=a.y||(child&&(child[0].x<a.x||child[0].x>b.x||child[0].y<a.y||child[0].y>b.y))){say('ขอบที่เลือกต้องครอบจุดตาและมีพื้นที่เลนส์ ลองแตะอีกครั้ง');return}
+  remember();commitBox(pair,[a,b],false);el('edgeChoice').value='';selected=pair;render();
+  const after=child?fittingValues(child,j+2,list):null;
+  say('แก้ขอบ'+(j?'ซ้าย':'ขวา')+'แล้ว'+(after?' · PD '+before.pd.toFixed(2)+' → '+after.pd.toFixed(2)+' mm · FH '+before.fh.toFixed(2)+' → '+after.fh.toFixed(2)+' mm':''));
+  return;
+ }
+ if(canFollow()&&e.isPrimary&&e.button===0){
+  calibrationPointer=e.pointerId;view.setPointerCapture(e.pointerId);showAim(e);followCursor(e);return;
+ }
+ if(!panning&&e.isPrimary&&e.button===0&&reference.length===targetCount()&&!drag&&!refDrag){
+  const p=point(e),radius=barMode()?4*pixelsPerMm():8*view.width/view.clientWidth;
+  const index=reference.findIndex(q=>distance(display(q),p)<=radius);
+  if(index>=0){
+   keyPart={ref:index};fineIndex=index;refDrag={id:e.pointerId,index,original:reference[index],start:local(p,0),before:snapshot()};
+   view.setPointerCapture(e.pointerId);el('aimCursor').style.display='none';
+   view.focus({preventScroll:true});render();return;
+  }
+ }
+ if(panning||!e.isPrimary||e.button!==0||reference.length<targetCount()||drag)return;
+ const p=point(e),unit=view.width/view.clientWidth;view.focus({preventScroll:true});keyPart=null;fineIndex=-1;
+ const parent=nextParent(rectangles()),tapped=[...rectangles()].reverse().find(pair=>insideBox(p,pair));
+ let target=null,anchor=null,edge=null;
+ if(measurementMode!=='line'&&!creatingChild&&!first){
+  const tolerance=(e.pointerType==='touch'?12:7)*unit;
+  const candidates=[...new Set([selected,...readings.slice().reverse()].filter(pair=>pair&&(pair.box||pair.tilted)))];
+  let best=tolerance;
+  for(const pair of candidates){
+   const pts=corners(pair),[a,,b]=pts,q=local(p,pair.basis);
+   for(let i=0;i<4;i++){
+    const d=distance(q,pts[i]);
+    if(d<best){best=d;target=pair;anchor=pts[(i+2)%4];edge=null}
+   }
+  }
+  if(!anchor)for(const pair of candidates){
+   const [a,,b]=corners(pair),q=local(p,pair.basis);
+   const dx=Math.max(a.x-q.x,0,q.x-b.x),dy=Math.max(a.y-q.y,0,q.y-b.y);
+   for(const [side,d] of [['left',Math.hypot(q.x-a.x,dy)],['right',Math.hypot(q.x-b.x,dy)],['top',Math.hypot(dx,q.y-a.y)],['bottom',Math.hypot(dx,q.y-b.y)]]){
+    if(d<best){best=d;target=pair;edge=side}
+   }
+  }
+  const hitPoint=rectangles().slice(2).find(pair=>distance(p,display(pair[0],pair.basis))<=Math.max(tolerance,5.5*pixelsPerMm()));
+  if(hitPoint){target=hitPoint;anchor=null;edge=null}
+  if(!target&&selected&&!isFitPoint(selected)&&boxTool()){
+   const grip=moveGrip(selected);
+   if(grip&&distance(p,grip)<=15*unit&&!insideBox(p,selected))target=selected;
+  }
+ }
+ if(!target&&!creatingChild&&!first){
+  const line=readings.find(isFreeLine);
+  if(line){
+   const [a,b]=line.map(q=>display(q)),dx=b.x-a.x,dy=b.y-a.y;
+   const t=clamp(((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy||1),0,1);
+   const hit=12*unit;
+   if(distance(p,{x:a.x+t*dx,y:a.y+t*dy})<hit){
+    const end=distance(p,a)<=hit?0:distance(p,b)<=hit?1:null;
+    keyPart={pair:line,end};say(end===null?'เลือกเส้นจุดต่อจุดแล้ว · ใช้ลูกศรเลื่อน':'เลือกปลายเส้นแล้ว · ใช้ลูกศรปรับ');render();return;
+   }
+  }
+ }
+ if(target){
+  const index=anchor?corners(target).findIndex(p=>p.x===anchor.x&&p.y===anchor.y):-1;
+  keyPart={pair:target,corner:index<0?null:(index+2)%4,edge};
+ }
+ if(!target&&!boxTool()){
+  if(!hasRoom()){promptPoint();return}
+  lineStart=local(p,0);linePointer=e.pointerId;view.setPointerCapture(e.pointerId);showAim(e);return;
+ }
+ if(!target&&!creatingChild&&tapped&&parent&&!insideBox(p,parent)){
+  selected=tapped;render();return;
+ }
+ if(!target&&rectangles().length>=measurementLimit){if(tapped)selected=tapped;render();promptPoint();return}
+ const outer=target?null:parent;
+ if(outer&&insideBox(p,outer)){const q=local(p,outer.basis);remember();selected=Object.assign([q,{...q}],{basis:outer.basis,box:true});readings.push(selected);creatingChild=false;if(rectangles().length===4)measurementMode='tilt';render();promptPoint();return}
+ const basis=target?.basis??outer?.basis??angle,start=local(p,basis);
+ if(outer){
+  const [a,,b]=corners(outer);
+  if(start.x<a.x||start.x>b.x||start.y<a.y||start.y>b.y){say('กดสร้างกรอบย่อย แล้วเริ่มลากภายในกรอบแม่');return}
+ }
+ if(!target?.tilted)selected=target||null;
+ drag={id:e.pointerId,target,outer,anchor,edge,start,basis,tapped,preview:target||Object.assign([start,start],{basis})};
+ view.setPointerCapture(e.pointerId);render();showAim(e);
+};
+function updateDrag(e){
+ const {start,target,anchor,basis}=drag,p=local(point(e),basis);
+ if(drag.edge){
+  const [a,,b]=corners(target),dx=p.x-start.x,dy=p.y-start.y;
+  if(drag.edge==='left')a.x=Math.min(b.x-1,a.x+dx);
+  if(drag.edge==='right')b.x=Math.max(a.x+1,b.x+dx);
+  if(drag.edge==='top')a.y=Math.min(b.y-1,a.y+dy);
+  if(drag.edge==='bottom')b.y=Math.max(a.y+1,b.y+dy);
+  drag.preview=[a,b];
+ }else if(!target||anchor)drag.preview=[anchor||start,p];
+ else{
+  const bounds=corners(target).map(q=>display(q,basis)),delta=spin({x:p.x-start.x,y:p.y-start.y},angle-basis);
+  const screenX=clamp(delta.x,-Math.min(...bounds.map(q=>q.x)),view.width-Math.max(...bounds.map(q=>q.x)));
+  const screenY=clamp(delta.y,-Math.min(...bounds.map(q=>q.y)),view.height-Math.max(...bounds.map(q=>q.y)));
+  const {x:dx,y:dy}=spin({x:screenX,y:screenY},basis-angle);
+  drag.preview=target.map(v=>({x:v.x+dx,y:v.y+dy}));
+ }
+ drag.preview=constrainBox(target,drag.preview,!!target&&!anchor&&!drag.edge,drag.outer);
+ drag.preview.basis=basis;
+}
+function showAim(e){
+ const onFitPoint=measurementMode!=='line'&&(isFitPoint(drag?.target)||rectangles().slice(2).some(pair=>distance(point(e),display(pair[0],pair.basis))<=5.5*pixelsPerMm()));
+ const cursor=el('aimCursor'),show=!onFitPoint&&view.classList.contains('aim')&&(e.pointerType==='mouse'||calibrationPointer===e.pointerId||drag?.id===e.pointerId||linePointer===e.pointerId);
+ cursor.style.display=show?'block':'none';
+ if(show){
+  const rect=view.getBoundingClientRect();
+  cursor.style.left=clamp(e.clientX,rect.left,rect.right)+'px';
+  cursor.style.top=clamp(e.clientY,rect.top,rect.bottom)+'px';
+ }
+}
+view.onpointermove=e=>{
+ if(canFollow()&&e.isPrimary&&(e.pointerType==='mouse'||calibrationPointer===e.pointerId)){showAim(e);followCursor(e);return}
+ if(refDrag?.id===e.pointerId){trackReference(e);render();return}
+ showAim(e);
+ if(linePointer===e.pointerId){lineEnd=local(point(e),0);render();return}
+ if(drag?.id===e.pointerId){updateDrag(e);render()}
+};
+view.onpointerleave=()=>{stopFollow();el('aimCursor').style.display='none'};
+let nudgedBox=null,nudgeTimer;
+function nudgeBox(key){
+ if(!selected||!boxTool()||view.hidden||drag)return;
+ if(isFitPoint(selected)){keyPart={pair:selected};nudgePicked(key);return}
+ const [dx,dy]=arrowSteps[key],step=.01*pixelsPerMm();
+ const d=spin({x:dx*step,y:dy*step},selected.basis-angle);
+ const [a,,b]=corners(selected),part=el('boxPart').value;
+ if(part==='all'||part==='0'||part==='3')a.x+=d.x;
+ if(part==='all'||part==='0'||part==='1')a.y+=d.y;
+ if(part==='all'||part==='1'||part==='2')b.x+=d.x;
+ if(part==='all'||part==='2'||part==='3')b.y+=d.y;
+ if(b.x<=a.x||b.y<=a.y)return;
+ const outside=corners([a,b]).some(p=>{const q=display(p,selected.basis);return q.x<0||q.x>view.width||q.y<0||q.y>view.height});
+ if(outside){say('กรอบอยู่ที่ขอบภาพแล้ว');return}
+ const points=constrainBox(selected,part==='all'?selected.map(p=>({x:p.x+d.x,y:p.y+d.y})):[a,b],part==='all');
+ if(distance(points[0],points[1])===0||points[0].x===points[1].x||points[0].y===points[1].y)return;
+ remember();commitBox(selected,points,part==='all');fineIndex=-1;
+ nudgedBox=selected;clearTimeout(nudgeTimer);nudgeTimer=setTimeout(()=>{nudgedBox=null;render()},220);render();
+}
+const boxArrows=[...document.querySelectorAll('[data-box-key]')];
+boxArrows.forEach(b=>b.onclick=()=>nudgeBox(b.dataset.boxKey));
+el('boxPart').onchange=()=>boxArrows[0].focus();
+function nudgePicked(key){
+ const [dx,dy]=arrowSteps[key],step=.01*pixelsPerMm();
+ const pair=keyPart.pair,basis=pair?.basis||0,d=spin({x:dx*step,y:dy*step},basis-angle);
+ if(keyPart.ref!==undefined){
+  const i=keyPart.ref,q=reference[i],next={x:q.x+d.x,y:q.y+d.y};
+  if(Math.abs(next.x)>photo.width/2||Math.abs(next.y)>photo.height/2||reference.some((other,j)=>j!==i&&distance(other,next)<1))return;
+  remember();reference[i]=next;geometry();render();return;
+ }
+ if(!readings.includes(pair))return;
+ const moving=keyPart.corner==null&&!keyPart.edge&&keyPart.end==null;
+ let pts;
+ if(isFreeLine(pair)||moving){
+  pts=pair.map((q,i)=>moving||i===keyPart.end?{x:q.x+d.x,y:q.y+d.y}:q);
+ }else{
+  const [a,,b]=corners(pair),i=keyPart.corner,edge=keyPart.edge;
+  if(i===0||i===3||edge==='left')a.x+=d.x;
+  if(i===1||i===2||edge==='right')b.x+=d.x;
+  if(i===0||i===1||edge==='top')a.y+=d.y;
+  if(i===2||i===3||edge==='bottom')b.y+=d.y;
+  if(b.x<=a.x||b.y<=a.y)return;
+  pts=[a,b];
+ }
+ if(pair.box)pts=constrainBox(pair,pts,moving);
+ if((isFreeLine(pair)?pts:corners(pts)).some(q=>{const p=display(q,basis);return p.x<0||p.y<0||p.x>view.width||p.y>view.height}))return;
+ remember();commitBox(pair,pts,moving);nudgedBox=pair;clearTimeout(nudgeTimer);nudgeTimer=setTimeout(()=>{nudgedBox=null;render()},220);render();
+}
+window.addEventListener('keydown',e=>{
+ if(e.defaultPrevented||!Object.hasOwn(arrowSteps,e.key)||view.hidden||drag||refDrag||e.ctrlKey||e.metaKey||e.altKey)return;
+ if(e.target.closest('input,select,textarea,[contenteditable],#fine'))return;
+ if(!keyPart&&!(selected&&boxTool()))return;
+ e.preventDefault();if(keyPart)nudgePicked(e.key);else nudgeBox(e.key);
+});
+view.onpointerup=e=>{
+ if(calibrationPointer===e.pointerId){
+  stopFollow();calibrationPointer=null;if(canFollow())tap(local(point(e),0));
+  if(e.pointerType!=='mouse')el('aimCursor').style.display='none';return;
+ }
+ if(refDrag?.id===e.pointerId){
+  trackReference(e);const d=refDrag;refDrag=null;
+  if(distance(reference[d.index],d.original)>0){
+   if(pixelsPerMm()<.01){reference[d.index]=d.original}
+   else{past.push(d.before);if(past.length>150)past.shift();future.length=0;geometry()}
+  }
+  render();say('เลือกจุด '+(d.index+1)+' แล้ว · ใช้ลูกศรปรับทีละ 0.01 มม.');return;
+ }
+ if(linePointer===e.pointerId){
+  const end=local(point(e),0),start=first||lineStart;
+  const dragged=distance(lineStart,end)>3*view.width/view.getBoundingClientRect().width;
+  clearLineDrag();
+  if(dragged&&hasRoom())finishMeasurement(start,end);
+  else tap(end);
+  if(e.pointerType!=='mouse')el('aimCursor').style.display='none';return;
+ }
+ if(drag?.id!==e.pointerId)return;
+ if(drag.target&&distance(local(point(e),drag.basis),drag.start)<.001){drag=null;render();say('เลือกแล้ว · กดลูกศรปรับครั้งละ 0.01 mm');return}
+ updateDrag(e);const {preview,target}=drag,[a,b]=preview;
+ if(isFitPoint(target)||(Math.abs(a.x-b.x)>=1&&Math.abs(a.y-b.y)>=1)){
+  if(!target||distance(target[0],a)>0||distance(target[1],b)>0)remember();
+  if(target)commitBox(target,preview,!drag.anchor&&!drag.edge);else{preview.box=true;readings.push(preview);selected=preview;creatingChild=false;if(rectangles().length===measurementLimit)measurementMode=tiltedBoxes().length<2?'tilt':'box'}
+ }
+ if(!target&&distance(a,b)<1&&drag.tapped&&!creatingChild)selected=drag.tapped;
+ drag=null;render();promptPoint();if(e.pointerType!=='mouse')el('aimCursor').style.display='none';
+};
+view.onpointercancel=view.onlostpointercapture=e=>{if(calibrationPointer===e.pointerId){stopFollow();calibrationPointer=null;el('aimCursor').style.display='none'}if(refDrag?.id===e.pointerId){reference[refDrag.index]=refDrag.original;refDrag=null;render()}if(drag?.id===e.pointerId||linePointer===e.pointerId){clearLineDrag();drag=null;el('aimCursor').style.display='none';render()}};
+function centreOn(q){
+ const rect=view.getBoundingClientRect();
+ viewport.scrollTo(q.x*rect.width/view.width-viewport.clientWidth/2,q.y*rect.height/view.height-viewport.clientHeight/2);
+}
+function changeView(degrees,step){
+ if(!hasPhoto||view.hidden)return;
+ const rect=view.getBoundingClientRect();
+ const centre=local({x:(viewport.scrollLeft+viewport.clientWidth/2)*view.width/rect.width,y:(viewport.scrollTop+viewport.clientHeight/2)*view.height/rect.height},0);
+ clearLineDrag();drag=null;manualAngle=((Math.round((manualAngle+degrees)*10)+5400)%3600-1800)/10;zoom=clamp(zoom+step,1,4);
+ if(degrees)geometry();render();centreOn(display(centre));
+}
+function annotatedImage(){
+ const footer=el('fitFooter');
+ if(footer.hidden)return view;
+ const canvas=document.createElement('canvas');canvas.width=view.width;canvas.height=view.height+footer.height;
+ const g=canvas.getContext('2d');g.drawImage(view,0,0);g.drawImage(footer,0,view.height);return canvas;
+}
+el('printA4').onclick=async()=>{
+ const image=annotatedImage(),scale=pixelsPerMm(),w=image.width/scale,h=image.height/scale;
+ const landscape=w>190&&w>h,limitW=landscape?277:190,limitH=landscape?182:269;
+ if(!Number.isFinite(w)||w>limitW||h>limitH){say('ภาพขนาดจริงเกินพื้นที่พิมพ์ A4');return}
+ const img=el('printPhoto');img.style.width=w+'mm';img.style.height=h+'mm';
+ el('pageSize').textContent='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:0}';
+ img.src=image.toDataURL('image/jpeg',.96);
+ try{await img.decode();window.print()}catch{say('เตรียมภาพสำหรับพิมพ์ไม่สำเร็จ')}
+};
+el('save').onclick=()=>{
+ if(!hasPhoto||view.hidden)return;
+ const filename=exportName(photoStamp||localTime('',new Date()).stamp,el('person').value,el('phone').value);
+ const output=document.createElement('canvas'),font=Math.max(14,Math.round(view.width/42)),pad=Math.ceil(font*.65);
+ const image=annotatedImage();
+ const lines=[...overflowLabels,el('photoTime').textContent];
+ output.width=view.width;output.height=image.height+pad*2+lines.length*Math.ceil(font*1.5);
+ const painter=output.getContext('2d');painter.drawImage(image,0,0);painter.fillStyle='#fff';painter.fillRect(0,image.height,output.width,output.height-image.height);
+ painter.fillStyle='#282037';painter.font=font+'px sans-serif';painter.textBaseline='middle';
+ lines.forEach((line,i)=>painter.fillText(line,pad,image.height+pad+(i+.5)*Math.ceil(font*1.5),Math.max(1,output.width-2*pad)));
+ const exif=originalExif,scale=reference.length===targetCount()?pixelsPerMm():0;
+ output.toBlob(async blob=>{
+  if(!blob){say('สร้างไฟล์ PNG ไม่สำเร็จ กรุณาลองอีกครั้ง');return}
+  let saved;try{saved=await taggedPng(blob,exif,scale)}catch{say('บันทึกข้อมูลภาพไม่สำเร็จ กรุณาลองอีกครั้ง');return}
+  const url=URL.createObjectURL(saved),link=document.createElement('a');
+  link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);say('ส่งภาพพร้อมผลวัดให้เบราว์เซอร์ดาวน์โหลดแล้ว');
+ },'image/png');
+};
+el('in').onclick=()=>changeView(0,.25);el('out').onclick=()=>changeView(0,-.25);
+el('pan').onclick=()=>{panning=!panning;drag=null;render();if(panning)say('ปัดภาพเพื่อเลื่อนดู แล้วกดกลับไปวัด');else promptPoint()};
+function choose(pair){
+ creatingChild=false;selected=pair;first=null;drag=null;setMode('box');
+ if(pair){const [a,b]=pair;centreOn(display({x:(a.x+b.x)/2,y:(a.y+b.y)/2},pair.basis))}
+}
+el('pick').onchange=()=>choose(el('pick').value===''?null:readings[Number(el('pick').value)]);
+el('reset').onclick=()=>{if(!readings.length||confirm('ล้างผลวัดในภาพนี้เพื่อตั้งสเกลใหม่?')){if(reference.length)remember();resetScale()}};
+el('mode').onchange=()=>{
+ if(readings.length&&!confirm('เปลี่ยนอุปกรณ์และล้างผลวัดในภาพนี้?')){el('mode').value=barMode()?'manual':'bar';return}
+ el('barSpacing').hidden=!barMode();el('manual').hidden=barMode();el('hint').textContent=barMode()?'แตะจุดตัดลายขาวดำจากซ้ายไปขวา ข้ามสกรูกลาง ระยะต่อช่วงใช้ค่าที่กำหนดด้านบน':'กรอกระยะจริงแล้วแตะปลายทั้งสองข้างของช่วงนั้นบนไม้บรรทัด';
+ if(hasPhoto){past.length=future.length=0;resetScale()}
+};
+el('person').oninput=el('phone').oninput=render;
+window.addEventListener('resize',render);window.addEventListener('pagehide',()=>{++revision;stopCamera()});
+</script>
+</html>
